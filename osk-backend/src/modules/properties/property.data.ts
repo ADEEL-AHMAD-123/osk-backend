@@ -377,7 +377,7 @@ export const SAMPLE_PROPERTIES: PropertySeed[] = [
     areaSqft: 540,
     locality: 'South Beach',
     city: 'Miami',
-    thumbnail: img('photo-1600210491892-03d54c0aaf87'),
+    thumbnail: img('photo-1493809842364-78817add7ffb'),
     isFeatured: false,
     location: { type: 'Point', coordinates: [-80.1349, 25.7825] },
     contactCapabilities: ALL_CHANNELS,
@@ -392,7 +392,7 @@ export const SAMPLE_PROPERTIES: PropertySeed[] = [
       'Cable + Wi-Fi included',
     ],
     media: [
-      { url: img('photo-1600210491892-03d54c0aaf87'), kind: 'image' },
+      { url: img('photo-1493809842364-78817add7ffb'), kind: 'image' },
       { url: img('photo-1600566753190-17f0baa2a6c3'), kind: 'image' },
       { url: img('photo-1600585154363-67eb9e2e2099'), kind: 'image' },
       { url: img('photo-1600573472556-e636c2acda88'), kind: 'image' },
