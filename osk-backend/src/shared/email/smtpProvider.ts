@@ -2,6 +2,13 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import { logger } from '../../config/logger';
 import type { EmailMessage, EmailProvider } from './EmailProvider';
 
+interface SmtpErrorLike {
+  code?: string;
+  command?: string;
+  response?: string;
+  responseCode?: number;
+}
+
 /**
  * SMTP adapter via nodemailer — works against any SMTP-capable provider
  * (Gmail, Outlook 365, Zoho, Mailtrap, the box's own mailer-daemon, etc.)
@@ -75,11 +82,29 @@ export const smtpEmailProvider: EmailProvider = {
           to: message.to,
           subject: message.subject,
           messageId: info.messageId,
+          accepted: info.accepted,
+          rejected: info.rejected,
+          pending: info.pending,
+          delivered: info.rejected.length === 0,
         },
-        'email.send',
+        'email delivered',
       );
     } catch (err) {
-      logger.error({ err, to: message.to }, 'smtp email send failed');
+      const smtpErr = err as SmtpErrorLike;
+      logger.error(
+        {
+          err,
+          provider: 'smtp',
+          to: message.to,
+          subject: message.subject,
+          delivered: false,
+          reason: smtpErr.response ?? (err instanceof Error ? err.message : 'Unknown SMTP error'),
+          code: smtpErr.code,
+          command: smtpErr.command,
+          responseCode: smtpErr.responseCode,
+        },
+        'email delivery failed',
+      );
       throw err;
     }
   },

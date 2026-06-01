@@ -35,15 +35,18 @@ function defaultFrom(): string {
 /** Dev-friendly adapter — logs the message and returns. */
 const consoleProvider: EmailProvider = {
   async send(message) {
-    logger.info(
+    logger.warn(
       {
         provider: 'console',
         to: message.to,
         subject: message.subject,
         from: message.from ?? defaultFrom(),
         replyTo: message.replyTo,
+        delivered: false,
+        reason:
+          'EMAIL_PROVIDER is not set to smtp; message was logged only and not sent',
       },
-      'email.send (stub)',
+      'email delivery skipped',
     );
   },
 };
@@ -74,5 +77,6 @@ export function getEmailProvider(): EmailProvider {
       cached = consoleProvider;
       break;
   }
+  logger.info({ provider: flavor }, 'email provider configured');
   return cached;
 }
