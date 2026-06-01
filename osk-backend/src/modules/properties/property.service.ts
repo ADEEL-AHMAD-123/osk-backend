@@ -179,6 +179,40 @@ export const propertyService = {
     return toPropertyDTO(doc);
   },
 
+  /**
+   * Owner marks a published listing as sold (deal closed off-platform). The
+   * listing stays browsable for history but drops out of public search. Only
+   * the owner or an admin can flip this.
+   */
+  async markSold(id: string, actor: AuthUser): Promise<PropertyDTO> {
+    const doc = await loadOwned(id, actor);
+    if (doc.status !== 'published') {
+      throw new ConflictError(
+        `Only a published listing can be marked sold (this one is "${doc.status}")`,
+      );
+    }
+    doc.status = 'sold';
+    await doc.save();
+    return toPropertyDTO(doc);
+  },
+
+  /**
+   * Owner re-opens a sold listing — useful if a deal falls through or the
+   * property comes back on the market. The listing returns to "draft" so
+   * the owner can update price / details before re-submitting for review.
+   */
+  async reopen(id: string, actor: AuthUser): Promise<PropertyDTO> {
+    const doc = await loadOwned(id, actor);
+    if (doc.status !== 'sold') {
+      throw new ConflictError(
+        `Only a sold listing can be re-opened (this one is "${doc.status}")`,
+      );
+    }
+    doc.status = 'draft';
+    await doc.save();
+    return toPropertyDTO(doc);
+  },
+
   /** Fire-and-forget view-count bump. Bounded by route-level rate limit. */
   async recordView(id: string): Promise<void> {
     await propertyRepository.incrementViewCount(id);

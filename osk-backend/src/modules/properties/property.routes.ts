@@ -10,8 +10,10 @@ import {
   listMyProperties,
   listProperties,
   listPropertiesInViewport,
+  markPropertySold,
   recordPropertyView,
   rejectProperty,
+  reopenProperty,
   submitProperty,
   updateProperty,
 } from './property.controller';
@@ -62,6 +64,18 @@ propertyRoutes.post(
   authenticate,
   authorize('seller', 'agent', 'admin'),
   asyncHandler(submitProperty),
+);
+propertyRoutes.post(
+  '/:id/mark-sold',
+  authenticate,
+  authorize('seller', 'agent', 'admin'),
+  asyncHandler(markPropertySold),
+);
+propertyRoutes.post(
+  '/:id/reopen',
+  authenticate,
+  authorize('seller', 'agent', 'admin'),
+  asyncHandler(reopenProperty),
 );
 
 // Admin moderation.

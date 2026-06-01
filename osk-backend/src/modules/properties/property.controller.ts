@@ -75,6 +75,24 @@ export const submitProperty: RequestHandler = async (req, res) => {
   );
 };
 
+/** POST /properties/:id/mark-sold — owner closes the deal. */
+export const markPropertySold: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  sendSuccess(
+    res,
+    await propertyService.markSold(req.params.id ?? '', req.user),
+  );
+};
+
+/** POST /properties/:id/reopen — owner re-lists a sold property. */
+export const reopenProperty: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  sendSuccess(
+    res,
+    await propertyService.reopen(req.params.id ?? '', req.user),
+  );
+};
+
 /** POST /properties/:id/approve — admin moderation. */
 export const approveProperty: RequestHandler = async (req, res) => {
   sendSuccess(res, await propertyService.review(req.params.id ?? '', 'approve'));
