@@ -50,31 +50,31 @@ propertyRoutes.get('/:slug', asyncHandler(getProperty));
 propertyRoutes.post(
   '/',
   authenticate,
-  authorize('seller', 'agent', 'admin'),
+  authorize('buyer', 'seller', 'agent', 'admin'),
   asyncHandler(createProperty),
 );
 propertyRoutes.patch(
   '/:id',
   authenticate,
-  authorize('seller', 'agent', 'admin'),
+  authorize('buyer', 'seller', 'agent', 'admin'),
   asyncHandler(updateProperty),
 );
 propertyRoutes.post(
   '/:id/submit',
   authenticate,
-  authorize('seller', 'agent', 'admin'),
+  authorize('buyer', 'seller', 'agent', 'admin'),
   asyncHandler(submitProperty),
 );
 propertyRoutes.post(
   '/:id/mark-sold',
   authenticate,
-  authorize('seller', 'agent', 'admin'),
+  authorize('buyer', 'seller', 'agent', 'admin'),
   asyncHandler(markPropertySold),
 );
 propertyRoutes.post(
   '/:id/reopen',
   authenticate,
-  authorize('seller', 'agent', 'admin'),
+  authorize('buyer', 'seller', 'agent', 'admin'),
   asyncHandler(reopenProperty),
 );
 
