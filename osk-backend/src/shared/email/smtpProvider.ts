@@ -34,6 +34,10 @@ interface SmtpEnv {
   password: string;
 }
 
+const SMTP_CONNECTION_TIMEOUT_MS = 10_000;
+const SMTP_GREETING_TIMEOUT_MS = 10_000;
+const SMTP_SOCKET_TIMEOUT_MS = 15_000;
+
 function readEnv(): SmtpEnv {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
@@ -52,11 +56,27 @@ let transporter: Transporter | null = null;
 function getTransporter(): Transporter {
   if (transporter) return transporter;
   const env = readEnv();
+  logger.info(
+    {
+      provider: 'smtp',
+      host: env.host,
+      port: env.port,
+      secure: env.secure,
+      user: env.user,
+      connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+      greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+      socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+    },
+    'smtp transporter initialized',
+  );
   transporter = nodemailer.createTransport({
     host: env.host,
     port: env.port,
     secure: env.secure,
     auth: { user: env.user, pass: env.password },
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
   });
   return transporter;
 }
@@ -68,6 +88,16 @@ export const smtpEmailProvider: EmailProvider = {
   async send(message: EmailMessage): Promise<void> {
     const t = getTransporter();
     try {
+      logger.info(
+        {
+          provider: 'smtp',
+          to: message.to,
+          subject: message.subject,
+          from: message.from ?? defaultFrom(),
+          replyTo: message.replyTo,
+        },
+        'email delivery started',
+      );
       const info = await t.sendMail({
         from: message.from ?? defaultFrom(),
         to: message.to,
