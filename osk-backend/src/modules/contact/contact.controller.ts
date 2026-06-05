@@ -25,6 +25,10 @@ const callIntentSchema = z.object({
   source: z.enum(['listing-card', 'detail-page']),
 });
 
+function primaryAppOrigin(): string {
+  return env.CORS_ORIGIN.split(',')[0]?.trim() || 'http://localhost:3000';
+}
+
 /** POST /contact/inquiry — email channel (secure relay, persisted). */
 export const submitInquiry: RequestHandler = async (req, res) => {
   const parsed = inquirySchema.safeParse(req.body);
@@ -75,7 +79,7 @@ export const getWhatsAppLink: RequestHandler = async (req, res) => {
 
   // Owner WhatsApp number comes from contactPreferences in production.
   const ownerNumber = '15550000000';
-  const listingUrl = `${env.CORS_ORIGIN}/property/${property.slug}`;
+  const listingUrl = `${primaryAppOrigin()}/property/${property.slug}`;
   const template =
     `Hi, I'm interested in "${property.title}" ` +
     `(${property.currency} ${property.price.toLocaleString('en-US')}). ` +

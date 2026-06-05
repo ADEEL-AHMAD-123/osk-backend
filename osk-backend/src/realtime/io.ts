@@ -29,12 +29,18 @@ declare module 'socket.io' {
 
 let io: SocketServer | null = null;
 
+function allowedOrigins(): string[] {
+  return env.CORS_ORIGIN.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function initSocket(httpServer: HttpServer): SocketServer {
   if (io) return io;
 
   io = new SocketServer(httpServer, {
     path: '/socket.io',
-    cors: { origin: env.CORS_ORIGIN, credentials: true },
+    cors: { origin: allowedOrigins(), credentials: true },
   });
 
   io.use((socket: Socket, next) => {
