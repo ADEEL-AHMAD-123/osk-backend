@@ -89,6 +89,16 @@ export const updateSettings: RequestHandler = async (req, res) => {
       req,
     });
   }
+  if (parsed.data.homeStats && parsed.data.homeStats.length > 0) {
+    void auditService.record({
+      actor: req.user as AuthUser,
+      action: 'settings.update',
+      entityType: 'settings',
+      entityId: 'default',
+      meta: { field: 'homeStats' },
+      req,
+    });
+  }
 
   sendSuccess(res, after);
 };

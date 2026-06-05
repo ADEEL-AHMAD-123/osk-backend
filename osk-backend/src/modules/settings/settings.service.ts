@@ -132,6 +132,17 @@ export const settingsService = {
         update['geo.allowedCountries'] = patch.geo.allowedCountries;
       }
     }
+    if (Array.isArray(patch.homeStats) && patch.homeStats.length === 4) {
+      update.homeStats = patch.homeStats.map((stat) => ({
+        value: stat.value.trim(),
+        label: stat.label.trim(),
+      }));
+    }
+    if (patch.legal) {
+      for (const [k, v] of Object.entries(patch.legal)) {
+        if (typeof v === 'string') update[`legal.${k}`] = v.trim();
+      }
+    }
 
     const doc = await SiteSettingsModel.findOneAndUpdate(
       { singletonKey: 'default' },
