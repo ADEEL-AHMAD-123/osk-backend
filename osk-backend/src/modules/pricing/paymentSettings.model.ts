@@ -63,6 +63,20 @@ const paystackSchema = new Schema<PaystackCreds>(
   { _id: false },
 );
 
+export const LEGACY_DEFAULT_BANK_INSTRUCTIONS =
+  'Wire your payment to the account below. Once your transfer clears we will mark the listing paid and publish it within one business day.';
+
+export const DEFAULT_BANK_INSTRUCTIONS = [
+  'Wire your payment to the account below. Once your transfer clears we will mark the listing paid and publish it within one business day.',
+  '',
+  'Beneficiary: OSK Real Estate Escrow Ltd.',
+  'Bank: North Atlantic Bank',
+  'Account number: 0012457789',
+  'IBAN: GB82NATB20481200124577',
+  'SWIFT/BIC: NATBGB2L',
+  'Reference: Use your listing title or property slug',
+].join('\n');
+
 export interface PaymentSettingsDoc extends Document {
   _id: Types.ObjectId;
   singletonKey: 'default';
@@ -93,8 +107,7 @@ const settingsSchema = new Schema<PaymentSettingsDoc>(
     },
     bankInstructions: {
       type: String,
-      default:
-        'Wire your payment to the account below. Once your transfer clears we will mark the listing paid and publish it within one business day.',
+      default: DEFAULT_BANK_INSTRUCTIONS,
     },
     stripe: { type: stripeSchema, default: () => ({}) },
     paypal: { type: paypalSchema, default: () => ({}) },

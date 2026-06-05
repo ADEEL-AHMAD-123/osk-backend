@@ -3,7 +3,11 @@ import { NotFoundError } from '../../shared/errors';
 import { decryptSecret, encryptSecret } from '../../shared/crypto/secrets';
 import { env } from '../../config/env';
 import { PricingPlanModel, type PricingPlanDoc } from './pricingPlan.model';
-import { PaymentSettingsModel } from './paymentSettings.model';
+import {
+  DEFAULT_BANK_INSTRUCTIONS,
+  LEGACY_DEFAULT_BANK_INSTRUCTIONS,
+  PaymentSettingsModel,
+} from './paymentSettings.model';
 import { toPaymentSettingsDTO, toPricingPlanDTO } from './pricing.mapper';
 import type {
   CreatePlanInput,
@@ -144,6 +148,9 @@ export const pricingService = {
     }).exec();
     if (!doc) {
       doc = await PaymentSettingsModel.create({ singletonKey: 'default' });
+    } else if (doc.bankInstructions === LEGACY_DEFAULT_BANK_INSTRUCTIONS) {
+      doc.bankInstructions = DEFAULT_BANK_INSTRUCTIONS;
+      await doc.save();
     }
     return toPaymentSettingsDTO(doc);
   },
