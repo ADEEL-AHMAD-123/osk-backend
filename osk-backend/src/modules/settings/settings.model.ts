@@ -174,7 +174,7 @@ const settingsSchema = new Schema<SiteSettingsDoc>(
       type: String,
       required: true,
       trim: true,
-      default: 'OSK — Real Estate',
+      default: 'OSK Property Real Estate | Buy, Sell & Rent Homes & Properties.',
       maxlength: 120,
     },
     companyName: { type: String, required: true, trim: true, default: 'OSK' },

@@ -32,7 +32,9 @@ export interface SiteSettingsDTO {
 function toDTO(doc: SiteSettingsDoc): SiteSettingsDTO {
   return {
     activeTheme: doc.activeTheme,
-    siteTitle: doc.siteTitle || 'OSK — Real Estate',
+    siteTitle:
+      doc.siteTitle ||
+      'OSK Property Real Estate | Buy, Sell & Rent Homes & Properties.',
     companyName: doc.companyName,
     logoUrl: doc.logoUrl,
     contact: doc.contact,
@@ -78,7 +80,7 @@ export const settingsService = {
         $setOnInsert: {
           singletonKey: 'default',
           activeTheme: 'theme-luxe-light',
-          siteTitle: 'OSK — Real Estate',
+          siteTitle: 'OSK Property Real Estate | Buy, Sell & Rent Homes & Properties.',
           companyName: 'OSK',
           logoUrl: '',
           contact: DEFAULT_CONTACT,
