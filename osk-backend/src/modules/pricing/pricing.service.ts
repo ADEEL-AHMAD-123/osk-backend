@@ -46,9 +46,13 @@ function dbOrEnv(stored: string, envValue: string | undefined): string {
  */
 function specificityScore(plan: PricingPlanDoc): number {
   let score = 0;
+  /* Country decides the pricing/currency region, so country-specific
+   * plans must beat global fallbacks even when those fallbacks are more
+   * specific on type/kind. Within the same country slice, type/kind
+   * still refine the match as before. */
+  if (plan.country !== PLAN_WILDCARD) score += 8;
   if (plan.propertyType !== PLAN_WILDCARD) score += 4;
   if (plan.listingKind !== PLAN_WILDCARD) score += 2;
-  if (plan.country !== PLAN_WILDCARD) score += 1;
   return score;
 }
 
