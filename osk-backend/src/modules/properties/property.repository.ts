@@ -31,6 +31,13 @@ export interface ListOptions {
   statuses?: PropertyStatus[];
   /** Restrict to one owner. */
   owner?: string;
+  /**
+   * Hard restrict by an allow-list of ISO-2 country codes. When the
+   * admin scopes the marketplace to specific countries via SiteSettings,
+   * the service layer passes the list here so the result set is filtered
+   * even if the request didn't carry an explicit `country` filter.
+   */
+  allowedCountries?: string[];
 }
 
 /** Data accepted by `create` — server-derived fields included. */
@@ -48,6 +55,7 @@ export interface NewPropertyData {
   areaSqft?: number;
   locality: string;
   city: string;
+  country: string;
   amenities: string[];
   location: { type: 'Point'; coordinates: [number, number] };
   thumbnail: string;
@@ -67,6 +75,36 @@ function buildFilter(
   if (opts.owner) query.owner = opts.owner;
   if (filters.type) query.type = filters.type;
   if (filters.listingKind) query.listingKind = filters.listingKind;
+  /* Country is a hard filter (ISO-2). Cross-country browsing is opt-in on
+   * the frontend — when the user clicks "Show worldwide" the client drops
+   * this param. Pre-country listings (created before the field existed)
+   * are still around in long-lived databases; for the historical default
+   * 'US' we also accept documents where `country` is missing or null, so
+   * those old listings don't vanish until the operator runs the backfill. */
+  if (filters.country) {
+    if (filters.country === 'US') {
+      query.$or = [
+        { country: 'US' },
+        { country: { $exists: false } },
+        { country: null },
+      ];
+    } else {
+      query.country = filters.country;
+    }
+  }
+  /* Marketplace-wide allow-list set by the admin in /admin/settings.
+   * Intersects with any explicit country filter — if the requested
+   * country isn't in the allow-list, force a no-match result. */
+  if (opts.allowedCountries && opts.allowedCountries.length > 0) {
+    if (filters.country) {
+      if (!opts.allowedCountries.includes(filters.country)) {
+        query.country = '__NONE__';
+        delete query.$or;
+      }
+    } else {
+      query.country = { $in: opts.allowedCountries };
+    }
+  }
   if (filters.city) {
     // Case-insensitive exact match — robust to slug→name translation
     // ("New York" vs "new york") and varied seed casing.
@@ -95,6 +133,7 @@ export const propertyRepository = {
     assertDbReady();
     const filter = buildFilter(filters, opts);
     const skip = (filters.page - 1) * filters.limit;
+
     const [items, total] = await Promise.all([
       PropertyModel.find(filter)
         .sort(SORT[filters.sort])

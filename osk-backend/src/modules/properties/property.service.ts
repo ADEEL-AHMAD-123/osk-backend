@@ -5,6 +5,8 @@ import {
   NotFoundError,
 } from '../../shared/errors';
 import type { AuthUser } from '../../shared/middleware/auth';
+import { pricingService } from '../pricing/pricing.service';
+import { settingsService } from '../settings/settings.service';
 import { propertyRepository, type OwnerAnalytics } from './property.repository';
 import { toPropertyDTO } from './property.mapper';
 import type { PropertyDoc } from './property.model';
@@ -61,10 +63,23 @@ async function loadOwned(id: string, actor: AuthUser): Promise<PropertyDoc> {
 }
 
 export const propertyService = {
-  /** Public, paginated listing — published/sold only. */
+  /**
+   * Public, paginated listing — published/sold only. Honours the
+   * marketplace-wide country allow-list configured in site settings,
+   * so a customer who hits the API directly with a disallowed country
+   * still gets an empty result. Owner-scoped reads (`listForOwner`)
+   * deliberately skip this — owners can always see their own listings
+   * regardless of the geographic scope.
+   */
   async list(filters: PropertyFilters): Promise<Paginated<PropertyDTO>> {
+    const geo = await settingsService.getGeo();
+    const allowedCountries =
+      geo.mode === 'restricted' && geo.allowedCountries.length > 0
+        ? geo.allowedCountries
+        : undefined;
     const { items, total } = await propertyRepository.list(filters, {
       statuses: PUBLIC_STATUSES,
+      allowedCountries,
     });
     return { items: items.map(toPropertyDTO), total, page: filters.page, limit: filters.limit };
   },
@@ -138,6 +153,7 @@ export const propertyService = {
       areaSqft: input.areaSqft,
       locality: input.locality,
       city: input.city,
+      country: input.country,
       amenities: input.amenities,
       location: input.location,
       slug: slugify(input.title),
@@ -223,7 +239,11 @@ export const propertyService = {
     return propertyRepository.ownerAnalytics(ownerId);
   },
 
-  /** Admin moderation — approve publishes the listing, reject sends it back. */
+  /**
+   * Admin moderation — approve publishes the listing OR routes it to
+   * `awaiting-payment` if payments are enabled and the resolver returns
+   * a non-zero base price. Reject sends it back to `rejected`.
+   */
   async review(
     id: string,
     decision: 'approve' | 'reject',
@@ -235,7 +255,40 @@ export const propertyService = {
         'Only listings pending review can be approved or rejected',
       );
     }
-    doc.status = decision === 'approve' ? 'published' : 'rejected';
+    if (decision === 'reject') {
+      doc.status = 'rejected';
+      await doc.save();
+      return toPropertyDTO(doc);
+    }
+
+    /* Approve path — consult the pricing resolver. If payments are off
+     * OR the matched plan price is 0, the listing publishes immediately
+     * (the free path is preserved). Otherwise it parks at awaiting-payment
+     * until the seller pays. */
+    const price = await pricingService.resolve({
+      propertyType: doc.type,
+      listingKind: doc.listingKind,
+      country: doc.country,
+      featured: doc.isFeatured,
+    });
+    doc.status =
+      !price.paymentsEnabled || price.total === 0
+        ? 'published'
+        : 'awaiting-payment';
+    await doc.save();
+    return toPropertyDTO(doc);
+  },
+
+  /**
+   * Flip a listing from `awaiting-payment` to `published`. Called by the
+   * payments service once a charge succeeds. The id is opaque so the
+   * payments module can call it without depending on the schema layer.
+   */
+  async markPaidAndPublish(id: string): Promise<PropertyDTO | null> {
+    const doc = await propertyRepository.findById(id);
+    if (!doc) return null;
+    if (doc.status !== 'awaiting-payment') return toPropertyDTO(doc);
+    doc.status = 'published';
     await doc.save();
     return toPropertyDTO(doc);
   },

@@ -13,6 +13,8 @@ import { threadRoutes } from './threads/thread.routes';
 import { mediaRoutes } from './media/media.routes';
 import { adminRoutes } from './admin/admin.routes';
 import { settingsRoutes } from './settings/settings.routes';
+import { pricingRoutes } from './pricing/pricing.routes';
+import { paymentRoutes } from './payments/payment.routes';
 
 /**
  * Module registry — the ONE place modules are wired into the API. To add a
@@ -35,6 +37,8 @@ export function registerModules(): Router {
   router.use('/media', mediaRoutes);
   router.use('/admin', adminRoutes);
   router.use('/settings', settingsRoutes);
+  router.use('/pricing', pricingRoutes);
+  router.use('/payments', paymentRoutes);
 
   return router;
 }

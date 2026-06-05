@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Avoid stacking duplicate runs while someone is force-pushing.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # Backend: lint + typecheck + jest (uses mongodb-memory-server, which
+  # downloads the binary on-the-fly — no MongoDB service container needed).
+  # ────────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend (lint + typecheck + jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: osk-backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: osk-backend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+        env:
+          NODE_ENV: test
+          # Pin a version mongodb-memory-server can fetch on ubuntu-latest.
+          MONGOMS_VERSION: 7.0.14
+
+  # ────────────────────────────────────────────────────────────────────
+  # Frontend: lint (includes color-check + stylelint) + typecheck + vitest.
+  # ────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend (lint + typecheck + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: osk-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: osk-frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint (eslint + stylelint + hardcoded-colors guard)
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Vitest
+        run: npm test

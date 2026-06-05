@@ -6,6 +6,12 @@ export const propertyFiltersSchema = z.object({
   q: z.string().optional(),
   type: z.enum(PROPERTY_TYPES).optional(),
   listingKind: z.enum(LISTING_KINDS).optional(),
+  /** ISO 3166-1 alpha-2. When set, that country's listings sort first. */
+  country: z
+    .string()
+    .length(2)
+    .transform((v) => v.toUpperCase())
+    .optional(),
   city: z.string().optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
@@ -42,6 +48,12 @@ export const createPropertySchema = z.object({
   areaSqft: z.number().positive().optional(),
   locality: z.string().min(2).max(120),
   city: z.string().min(2).max(120),
+  /** ISO 3166-1 alpha-2 country code. */
+  country: z
+    .string()
+    .length(2)
+    .transform((v) => v.toUpperCase())
+    .default('US'),
   amenities: z.array(z.string()).default([]),
   location: locationSchema,
   /** Optional — first image used as thumbnail. */

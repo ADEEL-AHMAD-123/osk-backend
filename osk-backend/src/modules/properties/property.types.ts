@@ -10,6 +10,12 @@ export const PROPERTY_STATUSES = [
   'draft',
   'pending-review',
   'approved',
+  /**
+   * Approved by an admin but the seller still owes payment before the
+   * listing is published. Only used when global payments are enabled
+   * AND the resolved pricing plan is non-zero.
+   */
+  'awaiting-payment',
   'rejected',
   'published',
   'sold',
@@ -53,6 +59,8 @@ export interface PropertyDTO {
   areaSqft?: number;
   locality: string;
   city: string;
+  /** ISO 3166-1 alpha-2 country code. */
+  country: string;
   thumbnail: string;
   isFeatured: boolean;
   location: GeoPoint;

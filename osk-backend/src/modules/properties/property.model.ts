@@ -31,6 +31,8 @@ export interface PropertyDoc extends Document {
   areaSqft?: number;
   locality: string;
   city: string;
+  /** ISO 3166-1 alpha-2 — e.g. 'US', 'CA', 'GB'. Defaults to 'US'. */
+  country: string;
   thumbnail: string;
   isFeatured: boolean;
   location: { type: 'Point'; coordinates: [number, number] };
@@ -71,6 +73,16 @@ const propertySchema = new Schema<PropertyDoc>(
     areaSqft: { type: Number, min: 0 },
     locality: { type: String, required: true, trim: true },
     city: { type: String, required: true, trim: true },
+    country: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+      minlength: 2,
+      maxlength: 2,
+      default: 'US',
+      index: true,
+    },
     thumbnail: { type: String, required: true },
     isFeatured: { type: Boolean, default: false },
     location: {

@@ -5,10 +5,15 @@ import { logger } from './config/logger';
 import { connectDatabase } from './config/db';
 import { connectRedis } from './config/redis';
 import { initSocket } from './realtime/io';
+import { runBootMigrations } from './migrations/runOnBoot';
 
 /** Process bootstrap: connect services, start HTTP + Socket.IO, handle signals. */
 async function bootstrap(): Promise<void> {
   await connectDatabase();
+  /* Idempotent housekeeping that should run every time the API starts —
+   * e.g. backfilling fields added in a later release for older docs that
+   * were created before the field existed. Safe to re-run. */
+  await runBootMigrations();
   await connectRedis();
 
   const app = createApp();

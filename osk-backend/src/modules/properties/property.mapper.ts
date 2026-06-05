@@ -17,6 +17,7 @@ export function toPropertyDTO(doc: PropertyDoc): PropertyDTO {
     areaSqft: doc.areaSqft,
     locality: doc.locality,
     city: doc.city,
+    country: doc.country ?? 'US',
     thumbnail: doc.thumbnail,
     isFeatured: doc.isFeatured,
     location: {

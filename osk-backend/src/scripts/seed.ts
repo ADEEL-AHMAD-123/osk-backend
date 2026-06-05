@@ -14,7 +14,12 @@ import { SAMPLE_PROPERTIES } from '../modules/properties/property.data';
 
 const SEED_USERS = [
   { name: 'OSK Admin', email: 'admin@osk.dev', password: 'Admin1234', role: 'admin' as const },
-  { name: 'Avery Agent', email: 'agent@osk.dev', password: 'Agent1234', role: 'agent' as const },
+  {
+    name: 'Avery Agent',
+    email: 'adeeel5598@gmail.com',
+    password: 'Agent1234',
+    role: 'agent' as const,
+  },
 ];
 
 async function seed(): Promise<void> {

@@ -14,12 +14,50 @@ const contactPatchSchema = z
   })
   .partial();
 
+/**
+ * Optional URLs that drive the "Get the OSK App" poster. Each accepts an
+ * empty string (used to clear an existing value) or a valid URL — the
+ * frontend hides the poster when every field is empty.
+ */
+const urlOrEmpty = z.union([z.literal(''), z.string().url().max(500)]);
+
+const appLinksPatchSchema = z
+  .object({
+    appStoreUrl: urlOrEmpty,
+    googlePlayUrl: urlOrEmpty,
+    appQrUrl: urlOrEmpty,
+  })
+  .partial();
+
+/**
+ * Geographic scope patch. Country list is normalised to uppercase ISO-2
+ * codes and de-duplicated; the resolver below rejects anything that
+ * isn't 2 characters so junk like 'usa' or 'United States' can't slip
+ * through.
+ */
+const geoPatchSchema = z
+  .object({
+    mode: z.enum(['all', 'restricted']),
+    allowedCountries: z
+      .array(
+        z
+          .string()
+          .length(2)
+          .transform((s) => s.toUpperCase()),
+      )
+      .max(250)
+      .transform((arr) => Array.from(new Set(arr))),
+  })
+  .partial();
+
 export const settingsPatchSchema = z
   .object({
     activeTheme: z.enum(THEME_NAMES),
     companyName: z.string().min(1).max(80),
     logoUrl: z.string().max(500),
     contact: contactPatchSchema,
+    appLinks: appLinksPatchSchema,
+    geo: geoPatchSchema,
   })
   .partial();
 
