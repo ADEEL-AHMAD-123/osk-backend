@@ -28,6 +28,16 @@ export const patchAdminSettings: RequestHandler = async (req, res) => {
       req,
     });
   }
+  if (parsed.data.siteTitle && parsed.data.siteTitle !== before.siteTitle) {
+    void auditService.record({
+      actor: req.user as AuthUser,
+      action: 'settings.update',
+      entityType: 'settings',
+      entityId: 'default',
+      meta: { field: 'siteTitle', before: before.siteTitle, after: after.siteTitle },
+      req,
+    });
+  }
   if (parsed.data.logoUrl !== undefined && parsed.data.logoUrl !== before.logoUrl) {
     void auditService.record({
       actor: req.user as AuthUser,

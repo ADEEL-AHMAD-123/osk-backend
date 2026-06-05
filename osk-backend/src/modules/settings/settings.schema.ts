@@ -50,14 +50,42 @@ const geoPatchSchema = z
   })
   .partial();
 
+/**
+ * Trust-strip stats. We accept exactly four entries (matches the home
+ * layout). Each entry has a short display value + label; empty strings
+ * are allowed so the admin can hide a slot if they want fewer than 4.
+ */
+const statPatchSchema = z.object({
+  value: z.string().max(24),
+  label: z.string().max(40),
+});
+const homeStatsPatchSchema = z.array(statPatchSchema).length(4);
+
+/**
+ * Legal-page markdown. We cap each blob at 50 KB — generous for full
+ * policies but enough to stop accidental DB blowups. updatedAt is a
+ * free-form ISO date string so the admin can backdate if needed.
+ */
+const legalPatchSchema = z
+  .object({
+    privacyMarkdown: z.string().max(50_000),
+    termsMarkdown: z.string().max(50_000),
+    privacyUpdatedAt: z.string().max(40),
+    termsUpdatedAt: z.string().max(40),
+  })
+  .partial();
+
 export const settingsPatchSchema = z
   .object({
     activeTheme: z.enum(THEME_NAMES),
+    siteTitle: z.string().min(1).max(120),
     companyName: z.string().min(1).max(80),
     logoUrl: z.string().max(500),
     contact: contactPatchSchema,
     appLinks: appLinksPatchSchema,
     geo: geoPatchSchema,
+    homeStats: homeStatsPatchSchema,
+    legal: legalPatchSchema,
   })
   .partial();
 

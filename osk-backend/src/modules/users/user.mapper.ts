@@ -8,6 +8,13 @@ export interface UserDTO {
   status: UserDoc['status'];
   emailVerified: boolean;
   avatarUrl?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  companyName?: string;
+  companyRegistration?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,6 +36,13 @@ export function toUserDTO(doc: UserDoc): UserDTO {
     status: doc.status,
     emailVerified: doc.emailVerified,
     avatarUrl: doc.avatarUrl,
+    phone: doc.phone,
+    address: doc.address,
+    city: doc.city,
+    state: doc.state,
+    country: doc.country,
+    companyName: doc.companyName,
+    companyRegistration: doc.companyRegistration,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };

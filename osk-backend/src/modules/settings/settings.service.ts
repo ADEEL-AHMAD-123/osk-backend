@@ -2,29 +2,37 @@ import {
   DEFAULT_APP_LINKS,
   DEFAULT_CONTACT,
   DEFAULT_GEO,
+  DEFAULT_HOME_STATS,
+  DEFAULT_LEGAL,
   SiteSettingsModel,
   THEME_NAMES,
   type SiteSettingsAppLinks,
   type SiteSettingsContact,
   type SiteSettingsDoc,
   type SiteSettingsGeo,
+  type SiteSettingsLegal,
+  type SiteSettingsStat,
   type ThemeName,
 } from './settings.model';
 
 /** Public-facing DTO — what the GET /settings endpoint returns. */
 export interface SiteSettingsDTO {
   activeTheme: ThemeName;
+  siteTitle: string;
   companyName: string;
   logoUrl: string;
   contact: SiteSettingsContact;
   appLinks: SiteSettingsAppLinks;
   geo: SiteSettingsGeo;
+  homeStats: SiteSettingsStat[];
+  legal: SiteSettingsLegal;
   updatedAt: string;
 }
 
 function toDTO(doc: SiteSettingsDoc): SiteSettingsDTO {
   return {
     activeTheme: doc.activeTheme,
+    siteTitle: doc.siteTitle || 'OSK — Real Estate',
     companyName: doc.companyName,
     logoUrl: doc.logoUrl,
     contact: doc.contact,
@@ -33,6 +41,13 @@ function toDTO(doc: SiteSettingsDoc): SiteSettingsDTO {
      * just treats them as "not configured" and hides the poster. */
     appLinks: doc.appLinks ?? DEFAULT_APP_LINKS,
     geo: doc.geo ?? DEFAULT_GEO,
+    /* Same pattern as appLinks: older singletons might be missing these
+     * fields. Fall back to defaults so the UI never crashes on null. */
+    homeStats:
+      Array.isArray(doc.homeStats) && doc.homeStats.length === 4
+        ? doc.homeStats
+        : DEFAULT_HOME_STATS,
+    legal: doc.legal ?? DEFAULT_LEGAL,
     updatedAt: doc.updatedAt.toISOString(),
   };
 }
@@ -40,11 +55,15 @@ function toDTO(doc: SiteSettingsDoc): SiteSettingsDTO {
 /** Whitelist for PATCH /admin/settings. */
 export interface SettingsPatch {
   activeTheme?: ThemeName;
+  siteTitle?: string;
   companyName?: string;
   logoUrl?: string;
   contact?: Partial<SiteSettingsContact>;
   appLinks?: Partial<SiteSettingsAppLinks>;
   geo?: Partial<SiteSettingsGeo>;
+  /** Trust-strip stats — exactly four entries when sent. */
+  homeStats?: SiteSettingsStat[];
+  legal?: Partial<SiteSettingsLegal>;
 }
 
 export const settingsService = {
@@ -59,10 +78,13 @@ export const settingsService = {
         $setOnInsert: {
           singletonKey: 'default',
           activeTheme: 'theme-luxe-light',
+          siteTitle: 'OSK — Real Estate',
           companyName: 'OSK',
           logoUrl: '',
           contact: DEFAULT_CONTACT,
           appLinks: DEFAULT_APP_LINKS,
+          homeStats: DEFAULT_HOME_STATS,
+          legal: DEFAULT_LEGAL,
         },
       },
       { new: true, upsert: true, setDefaultsOnInsert: true },
@@ -77,6 +99,9 @@ export const settingsService = {
     const update: Record<string, unknown> = {};
     if (patch.activeTheme && THEME_NAMES.includes(patch.activeTheme)) {
       update.activeTheme = patch.activeTheme;
+    }
+    if (typeof patch.siteTitle === 'string') {
+      update.siteTitle = patch.siteTitle.trim();
     }
     if (typeof patch.companyName === 'string') {
       update.companyName = patch.companyName.trim();

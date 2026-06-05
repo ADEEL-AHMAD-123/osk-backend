@@ -16,6 +16,13 @@ export interface UserDoc extends Document {
   passwordResetTokenHash?: string;
   passwordResetExpires?: Date;
   avatarUrl?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  companyName?: string;
+  companyRegistration?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +54,13 @@ const userSchema = new Schema<UserDoc>(
     passwordResetTokenHash: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
     avatarUrl: { type: String },
+    phone: { type: String, trim: true, maxlength: 40 },
+    address: { type: String, trim: true, maxlength: 240 },
+    city: { type: String, trim: true, maxlength: 80 },
+    state: { type: String, trim: true, maxlength: 80 },
+    country: { type: String, trim: true, maxlength: 80 },
+    companyName: { type: String, trim: true, maxlength: 120 },
+    companyRegistration: { type: String, trim: true, maxlength: 120 },
   },
   { timestamps: true },
 );

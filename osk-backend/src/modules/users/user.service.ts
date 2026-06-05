@@ -35,6 +35,17 @@ export const userService = {
     if (patch.avatarUrl !== undefined) {
       next.avatarUrl = patch.avatarUrl || undefined;
     }
+    if (patch.phone !== undefined) next.phone = patch.phone || undefined;
+    if (patch.address !== undefined) next.address = patch.address || undefined;
+    if (patch.city !== undefined) next.city = patch.city || undefined;
+    if (patch.state !== undefined) next.state = patch.state || undefined;
+    if (patch.country !== undefined) next.country = patch.country || undefined;
+    if (patch.companyName !== undefined) {
+      next.companyName = patch.companyName || undefined;
+    }
+    if (patch.companyRegistration !== undefined) {
+      next.companyRegistration = patch.companyRegistration || undefined;
+    }
     const user = await UserModel.findByIdAndUpdate(id, next, {
       new: true,
     }).exec();
