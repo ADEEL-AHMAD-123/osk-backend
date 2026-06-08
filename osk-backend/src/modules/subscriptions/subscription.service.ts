@@ -194,10 +194,14 @@ export const subscriptionService = {
       plan.prices.length === 0 || plan.prices.every((p) => p.amount === 0);
 
     /* Replace any existing subscription row — keeps things simple; the
-     * history table is the Payments collection. */
+     * history table is the Payments collection. Same-plan + active is
+     * a no-op: telling the user to "manage subscription" is clearer
+     * than silently re-running the subscribe flow. */
     const existing = await this.getCurrent(userId);
     if (existing && existing.planSlug === plan.slug && existing.status === 'active') {
-      throw new ConflictError('You are already subscribed to this plan');
+      throw new ConflictError(
+        `You're already on the ${plan.name} plan. Visit your dashboard to manage it.`,
+      );
     }
 
     const now = new Date();
