@@ -19,6 +19,14 @@ import type {
   VerificationResult,
 } from './payment.types';
 
+const PAYSTACK_SUPPORTED_CURRENCIES = new Set([
+  'NGN',
+  'GHS',
+  'ZAR',
+  'USD',
+  'KES',
+]);
+
 function providerIntentErrorMessage(err: unknown): string {
   const message = String((err as { message?: unknown })?.message ?? '').trim();
   if (!message) return 'Could not start payment right now. Please try again.';
@@ -92,6 +100,16 @@ export const paymentService = {
       );
     }
 
+    const checkoutCurrency = currency.toUpperCase();
+    if (
+      provider === 'paystack' &&
+      !PAYSTACK_SUPPORTED_CURRENCIES.has(checkoutCurrency)
+    ) {
+      throw new ConflictError(
+        `Paystack does not support ${checkoutCurrency} for subscription checkout. Choose another provider or currency.`,
+      );
+    }
+
     /* Reuse a still-pending intent if one exists for this subscription
      * so refreshes don't spawn parallel rows. */
     const existing = await PaymentModel.findOne({
@@ -110,7 +128,7 @@ export const paymentService = {
         provider,
         status: 'pending',
         amount,
-        currency: currency.toUpperCase(),
+        currency: checkoutCurrency,
       }));
 
     const adapter = getProvider(provider);
@@ -121,7 +139,7 @@ export const paymentService = {
         paymentId: payment._id.toString(),
         propertyId: subscriptionId, // adapter uses this as an opaque ref
         amount,
-        currency: currency.toUpperCase(),
+        currency: checkoutCurrency,
         description: `OSK ${planName} subscription`,
         successUrl: `${baseUrl}/dashboard/subscription?status=success`,
         cancelUrl: `${baseUrl}/dashboard/subscription?status=cancelled`,
