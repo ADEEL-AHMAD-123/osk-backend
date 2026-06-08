@@ -3,8 +3,14 @@ import {
   ConflictError,
   NotFoundError,
 } from '../../shared/errors';
+import {
+  PROVIDER_BILLING_CURRENCIES,
+  providerSupportsCurrency,
+} from '../payments/billing-currencies';
+import type { ProviderKey } from '../payments/payment.types';
 import { SubscriptionModel, type SubscriptionDoc } from './subscription.model';
 import { toSubscriptionDTO } from './subscription.mapper';
+import type { SubscriptionPlanDoc } from './subscriptionPlan.model';
 import { subscriptionPlanService } from './subscriptionPlan.service';
 import type {
   SubscriptionDTO,
@@ -36,6 +42,57 @@ export interface ResolvedSubscription {
   enabled: Partial<Record<FeatureKey, boolean>>;
   /** Map of FeatureKey → limit (null = unlimited). */
   limits: Partial<Record<FeatureKey, number | null>>;
+}
+
+/**
+ * The (provider, billingCurrency, amount) tuple a paid subscription
+ * will actually be charged with at checkout. Display localisation is
+ * a frontend concern; the server only deals in real money.
+ */
+export interface CheckoutPair {
+  provider: ProviderKey;
+  currency: string;
+  amount: number;
+}
+
+/**
+ * Find a billing currency in `plan.prices` that the chosen provider
+ * can charge in. Prefers `preferredCurrency` (typically the user's
+ * locale currency); falls back to the first compatible price. Throws
+ * a ConflictError with an explanation when no pair is possible — that
+ * way the seller gets "Paystack can't charge plan Gold in any
+ * supported currency" instead of a generic provider error.
+ */
+export function resolveCheckoutPair(
+  plan: SubscriptionPlanDoc,
+  provider: ProviderKey,
+  preferredCurrency?: string,
+): CheckoutPair {
+  const providerCurrencies = PROVIDER_BILLING_CURRENCIES[provider] as readonly string[];
+  const pref = preferredCurrency?.toUpperCase();
+
+  /* Prefer exact match between the user's hinted currency and what
+   * the provider can charge. */
+  if (pref) {
+    const exact = plan.prices.find(
+      (p) => p.currency === pref && providerCurrencies.includes(p.currency),
+    );
+    if (exact) return { provider, currency: exact.currency, amount: exact.amount };
+  }
+
+  /* Otherwise pick the first plan price whose currency the provider
+   * supports. Admins are expected to keep USD as a fallback in every
+   * paid plan so this almost always matches. */
+  const match = plan.prices.find((p) => providerCurrencies.includes(p.currency));
+  if (match) return { provider, currency: match.currency, amount: match.amount };
+
+  /* No compatible currency. */
+  const planCurrencies = plan.prices.map((p) => p.currency).join(', ') || '—';
+  throw new ConflictError(
+    `${provider} cannot charge plan "${plan.name}" — provider supports ${providerCurrencies.join(
+      ', ',
+    )} but the plan is priced in ${planCurrencies}. Ask the operator to add a compatible currency.`,
+  );
 }
 
 function rollPeriodEnd(
@@ -102,16 +159,28 @@ export const subscriptionService = {
   },
 
   /**
-   * Start a new subscription for `userId` on plan `planId`. Replaces any
-   * existing row (no parallel actives). If the plan is FREE (zero price
-   * in the chosen currency) the subscription is activated immediately;
-   * otherwise the caller (payment service) will activate it on payment.
+   * Start a new subscription for `userId` on plan `planId`.
+   *
+   *  - Free plan (no prices, or all amounts = 0): activated immediately
+   *    and `checkout` is null on the return.
+   *  - Paid plan: requires `provider`. The service resolves the
+   *    (provider, billingCurrency, amount) pair using `preferredCurrency`
+   *    as a hint, persists a pending-payment subscription, and returns
+   *    the resolved pair so the controller can ask the payment service
+   *    for an intent without re-deriving it.
+   *
+   * Currency hint defaults to the user's local currency (passed by the
+   * frontend). The resolver still picks a different currency if the
+   * provider can't charge the local one.
    */
   async subscribe(
     userId: string,
     planId: string,
-    currency = 'USD',
-  ): Promise<SubscriptionDoc> {
+    opts: {
+      provider?: ProviderKey;
+      preferredCurrency?: string;
+    } = {},
+  ): Promise<{ doc: SubscriptionDoc; checkout: CheckoutPair | null }> {
     if (!mongoose.isValidObjectId(planId)) {
       throw new NotFoundError('Plan not found');
     }
@@ -120,14 +189,11 @@ export const subscriptionService = {
       throw new NotFoundError('Plan not available');
     }
 
-    /* Free path: zero-amount plan activates immediately. */
-    const price = plan.prices.find(
-      (p) => p.currency === currency.toUpperCase(),
-    );
+    /* Free path: plan has no prices, or every price is zero. */
     const isFree =
-      plan.prices.length === 0 || (price && price.amount === 0);
+      plan.prices.length === 0 || plan.prices.every((p) => p.amount === 0);
 
-    /* Replace any existing subscription row — keeps things simple, the
+    /* Replace any existing subscription row — keeps things simple; the
      * history table is the Payments collection. */
     const existing = await this.getCurrent(userId);
     if (existing && existing.planSlug === plan.slug && existing.status === 'active') {
@@ -151,12 +217,37 @@ export const subscriptionService = {
       doc.startedAt = now;
       doc.currentPeriodEnd = rollPeriodEnd(now, plan.interval);
       doc.payment = null;
-    } else {
-      doc.status = 'pending-payment';
-      /* Period starts on payment success, not here. */
+      await doc.save();
+      return { doc, checkout: null };
     }
+
+    /* Paid path — must have a provider. The resolver throws a
+     * descriptive ConflictError if no compatible (provider, currency)
+     * pair exists, so the user gets a useful message rather than a
+     * generic provider failure later in the request. */
+    if (!opts.provider) {
+      throw new ConflictError(
+        'This plan is paid — pick a payment method to continue.',
+      );
+    }
+    const checkout = resolveCheckoutPair(
+      plan,
+      opts.provider,
+      opts.preferredCurrency,
+    );
+    /* Belt-and-suspenders: the resolver already enforces this, but
+     * keep an assertion in case admins ever add a non-billing
+     * currency to a plan through some path that bypasses validation. */
+    if (!providerSupportsCurrency(checkout.provider, checkout.currency)) {
+      throw new ConflictError(
+        `${checkout.provider} cannot charge in ${checkout.currency}.`,
+      );
+    }
+
+    doc.status = 'pending-payment';
+    /* Period starts on payment success, not here. */
     await doc.save();
-    return doc;
+    return { doc, checkout };
   },
 
   /**

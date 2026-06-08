@@ -9,6 +9,7 @@ import { logger } from '../../config/logger';
 import type { AuthUser } from '../../shared/middleware/auth';
 import { pricingService } from '../pricing/pricing.service';
 import { subscriptionService } from '../subscriptions/subscription.service';
+import { providerSupportsCurrency } from './billing-currencies';
 import { PaymentModel, type PaymentDoc } from './payment.model';
 import { toPaymentDTO } from './payment.mapper';
 import { getProvider } from './providers';
@@ -18,14 +19,6 @@ import type {
   ProviderKey,
   VerificationResult,
 } from './payment.types';
-
-const PAYSTACK_SUPPORTED_CURRENCIES = new Set([
-  'NGN',
-  'GHS',
-  'ZAR',
-  'USD',
-  'KES',
-]);
 
 function providerIntentErrorMessage(err: unknown): string {
   const message = String((err as { message?: unknown })?.message ?? '').trim();
@@ -101,12 +94,13 @@ export const paymentService = {
     }
 
     const checkoutCurrency = currency.toUpperCase();
-    if (
-      provider === 'paystack' &&
-      !PAYSTACK_SUPPORTED_CURRENCIES.has(checkoutCurrency)
-    ) {
+    /* Last-line defence — subscriptionService.subscribe already
+     * resolves a compatible (provider, currency) pair before reaching
+     * us. This check catches calls that bypass that resolver and gives
+     * a uniform message no matter which provider was picked. */
+    if (!providerSupportsCurrency(provider, checkoutCurrency)) {
       throw new ConflictError(
-        `Paystack does not support ${checkoutCurrency} for subscription checkout. Choose another provider or currency.`,
+        `${provider} cannot charge in ${checkoutCurrency} for subscription checkout. Choose another provider or currency.`,
       );
     }
 

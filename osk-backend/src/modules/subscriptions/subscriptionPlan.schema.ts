@@ -1,11 +1,22 @@
 import { z } from 'zod';
+import { BILLING_CURRENCIES } from '../payments/billing-currencies';
 import { FEATURE_KEYS, PLAN_INTERVALS } from './subscriptionPlan.types';
 
+/**
+ * Plan prices must be in one of the platform's billing currencies.
+ * The frontend converts these for display via a static FX table, but
+ * the stored value is always one we can actually charge against — no
+ * runtime FX, no provider mismatch.
+ */
 const priceSchema = z.object({
   currency: z
     .string()
     .length(3)
-    .transform((s) => s.toUpperCase()),
+    .transform((s) => s.toUpperCase())
+    .refine(
+      (s) => (BILLING_CURRENCIES as readonly string[]).includes(s),
+      `Currency must be one of: ${BILLING_CURRENCIES.join(', ')}`,
+    ),
   amount: z.number().nonnegative(),
 });
 

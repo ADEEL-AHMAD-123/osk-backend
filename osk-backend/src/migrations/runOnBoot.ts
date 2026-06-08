@@ -66,8 +66,13 @@ async function ensureSubscriptionCatalog(): Promise<void> {
       slug: 'gold',
       name: 'Gold',
       tagline: 'For growing agencies',
+      /* Multi-currency by design — at checkout we pick the price in
+       * a currency the chosen provider can charge. The frontend
+       * converts whichever canonical price is closest into the user's
+       * local currency for display. */
       prices: [
         { currency: 'USD', amount: 99 },
+        { currency: 'CAD', amount: 129 },
         { currency: 'NGN', amount: 99000 },
       ],
       interval: 'month' as const,
@@ -99,6 +104,7 @@ async function ensureSubscriptionCatalog(): Promise<void> {
       tagline: 'Maximum visibility and scale',
       prices: [
         { currency: 'USD', amount: 199 },
+        { currency: 'CAD', amount: 269 },
         { currency: 'NGN', amount: 199000 },
       ],
       interval: 'month' as const,

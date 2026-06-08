@@ -1,4 +1,8 @@
 import { decryptSecret, maskSecret } from '../../shared/crypto/secrets';
+import {
+  BILLING_CURRENCIES,
+  PROVIDER_BILLING_CURRENCIES,
+} from '../payments/billing-currencies';
 import type { PaymentSettingsDoc } from './paymentSettings.model';
 import type {
   MaskedSecretField,
@@ -97,6 +101,8 @@ export function toPaymentSettingsDTO(
       },
     },
     providerReady: computeProviderReady(decoded),
+    providerBillingCurrencies: PROVIDER_BILLING_CURRENCIES,
+    billingCurrencies: BILLING_CURRENCIES,
   };
 }
 

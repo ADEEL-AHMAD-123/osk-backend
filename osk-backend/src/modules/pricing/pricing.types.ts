@@ -66,4 +66,16 @@ export interface PaymentSettingsDTO {
    * each provider's required field list.
    */
   providerReady: Record<ProviderKey, boolean>;
+  /**
+   * The billing currencies each provider can actually charge in. The
+   * frontend uses this to surface only valid (provider, currency)
+   * pairs at checkout. Read-only from the API — the matrix is a
+   * platform constant, not an admin setting.
+   */
+  providerBillingCurrencies: Record<ProviderKey, readonly string[]>;
+  /**
+   * Union of every supported billing currency. Used by the admin plan
+   * editor to constrain the price-currency dropdown.
+   */
+  billingCurrencies: readonly string[];
 }
