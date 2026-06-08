@@ -15,6 +15,10 @@ import { adminRoutes } from './admin/admin.routes';
 import { settingsRoutes } from './settings/settings.routes';
 import { pricingRoutes } from './pricing/pricing.routes';
 import { paymentRoutes } from './payments/payment.routes';
+import {
+  subscriptionPlanRoutes,
+  subscriptionRoutes,
+} from './subscriptions/subscriptions.routes';
 
 /**
  * Module registry — the ONE place modules are wired into the API. To add a
@@ -39,6 +43,8 @@ export function registerModules(): Router {
   router.use('/settings', settingsRoutes);
   router.use('/pricing', pricingRoutes);
   router.use('/payments', paymentRoutes);
+  router.use('/subscription-plans', subscriptionPlanRoutes);
+  router.use('/subscriptions', subscriptionRoutes);
 
   return router;
 }

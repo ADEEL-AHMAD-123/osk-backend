@@ -134,6 +134,19 @@ export const settingsService = {
         update['geo.allowedCountries'] = patch.geo.allowedCountries;
       }
     }
+    /* Home stats are written as a whole 4-entry array — partial writes
+     * would be ambiguous (which slot is which?). The Zod schema already
+     * guarantees length === 4 when it's present. */
+    if (Array.isArray(patch.homeStats)) {
+      update.homeStats = patch.homeStats;
+    }
+    /* Legal copy follows the nested-merge pattern so an admin can update
+     * privacy without nuking terms (or vice-versa). */
+    if (patch.legal) {
+      for (const [k, v] of Object.entries(patch.legal)) {
+        if (typeof v === 'string') update[`legal.${k}`] = v;
+      }
+    }
     if (Array.isArray(patch.homeStats) && patch.homeStats.length === 4) {
       update.homeStats = patch.homeStats.map((stat) => ({
         value: stat.value.trim(),

@@ -166,6 +166,17 @@ export const propertyRepository = {
     return new PropertyModel(data).save();
   },
 
+  /** Count of non-archived listings owned by `ownerId` — used by the
+   *  subscription gate to enforce the per-plan submissions limit. */
+  async countOwned(ownerId: string): Promise<number> {
+    assertDbReady();
+    if (!mongoose.isValidObjectId(ownerId)) return 0;
+    return PropertyModel.countDocuments({
+      owner: ownerId,
+      status: { $ne: 'archived' },
+    }).exec();
+  },
+
   /** Properties whose point falls inside a [west, south, east, north] box. */
   async findInViewport(
     bbox: [number, number, number, number],

@@ -7,6 +7,7 @@ import {
 import type { AuthUser } from '../../shared/middleware/auth';
 import { pricingService } from '../pricing/pricing.service';
 import { settingsService } from '../settings/settings.service';
+import { subscriptionService } from '../subscriptions/subscription.service';
 import { propertyRepository, type OwnerAnalytics } from './property.repository';
 import { toPropertyDTO } from './property.mapper';
 import type { PropertyDoc } from './property.model';
@@ -135,6 +136,27 @@ export const propertyService = {
     ownerId: string,
     input: CreatePropertyInput,
   ): Promise<PropertyDTO> {
+    /* Subscription gate: every seller needs an active plan, and they
+     * can't exceed the plan's submissions cap. We throw a Forbidden
+     * with a recognisable code so the frontend can redirect to /pricing
+     * on the no-plan case and surface "upgrade your plan" on the
+     * over-limit case. */
+    const resolved = await subscriptionService.resolve(ownerId);
+    if (resolved.status === 'none' || resolved.status === 'expired') {
+      throw new ForbiddenError(
+        'You need an active plan before publishing a listing. Visit /pricing to subscribe.',
+      );
+    }
+    const limit = resolved.limits.submissions;
+    if (typeof limit === 'number') {
+      const existing = await propertyRepository.countOwned(ownerId);
+      if (existing >= limit) {
+        throw new ForbiddenError(
+          `Your plan allows up to ${limit} listings. Upgrade your plan to add more.`,
+        );
+      }
+    }
+
     const media = (input.media ?? []).map((m) => ({
       url: m.url,
       kind: m.kind,

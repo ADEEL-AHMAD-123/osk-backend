@@ -8,7 +8,12 @@ import {
 
 export interface PaymentDoc extends Document {
   _id: Types.ObjectId;
-  property: Types.ObjectId;
+  /** Property this payment is for. Optional now — subscription payments
+   *  carry no property reference. */
+  property?: Types.ObjectId;
+  /** Subscription this payment renews / activates. Optional —
+   *  legacy per-listing payments carry no subscription. */
+  subscription?: Types.ObjectId;
   user: Types.ObjectId;
   provider: ProviderKey;
   status: PaymentStatus;
@@ -18,7 +23,7 @@ export interface PaymentDoc extends Document {
   providerRef?: string;
   /** Provider-specific opaque metadata — checkout URL, client secret, etc. */
   metadata: Map<string, string>;
-  /** Pricing plan that resolved this charge — kept for audits. */
+  /** Legacy: per-listing pricing plan refs. Kept nullable for compatibility. */
   basePlan?: Types.ObjectId;
   featuredPlan?: Types.ObjectId;
   createdAt: Date;
@@ -30,7 +35,11 @@ const paymentSchema = new Schema<PaymentDoc>(
     property: {
       type: Schema.Types.ObjectId,
       ref: 'Property',
-      required: true,
+      index: true,
+    },
+    subscription: {
+      type: Schema.Types.ObjectId,
+      ref: 'Subscription',
       index: true,
     },
     user: {

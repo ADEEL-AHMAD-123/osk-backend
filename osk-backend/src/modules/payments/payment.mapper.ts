@@ -8,7 +8,11 @@ export function toPaymentDTO(doc: PaymentDoc): PaymentDTO {
   }
   return {
     id: doc._id.toString(),
-    propertyId: doc.property.toString(),
+    /* Both property and subscription are optional — only one is set per
+     * Payment depending on what's being paid for. Empty string when
+     * neither, so the DTO stays a flat shape for the frontend. */
+    propertyId: doc.property?.toString() ?? '',
+    subscriptionId: doc.subscription?.toString() ?? null,
     userId: doc.user.toString(),
     provider: doc.provider,
     status: doc.status,

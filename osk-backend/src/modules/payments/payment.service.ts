@@ -10,6 +10,7 @@ import type { AuthUser } from '../../shared/middleware/auth';
 import { PropertyModel } from '../properties/property.model';
 import { propertyService } from '../properties/property.service';
 import { pricingService } from '../pricing/pricing.service';
+import { subscriptionService } from '../subscriptions/subscription.service';
 import { PaymentModel, type PaymentDoc } from './payment.model';
 import { toPaymentDTO } from './payment.mapper';
 import { getProvider } from './providers';
@@ -168,6 +169,87 @@ export const paymentService = {
   },
 
   /**
+   * Subscription checkout. Creates a Payment row pointed at a pending
+   * subscription, asks the chosen provider to mint a hosted checkout
+   * session, and hands back the redirect URL. Activation happens later
+   * via `markSucceeded` when the provider webhook fires.
+   */
+  async createSubscriptionIntent(
+    actor: AuthUser,
+    subscriptionId: string,
+    provider: ProviderKey,
+    amount: number,
+    currency: string,
+    planName: string,
+  ): Promise<{ payment: PaymentDTO; redirectUrl: string }> {
+    if (!mongoose.isValidObjectId(subscriptionId)) {
+      throw new NotFoundError('Subscription not found');
+    }
+
+    const settings = await pricingService.getSettings();
+    if (!settings.enabledProviders.includes(provider)) {
+      throw new ConflictError(
+        `Provider "${provider}" is currently disabled by the operator.`,
+      );
+    }
+
+    /* Reuse a still-pending intent if one exists for this subscription
+     * so refreshes don't spawn parallel rows. */
+    const existing = await PaymentModel.findOne({
+      subscription: subscriptionId,
+      provider,
+      status: { $in: ['pending', 'processing'] satisfies PaymentStatus[] },
+    })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    const payment =
+      existing ??
+      (await PaymentModel.create({
+        subscription: subscriptionId,
+        user: actor.id,
+        provider,
+        status: 'pending',
+        amount,
+        currency: currency.toUpperCase(),
+      }));
+
+    const adapter = getProvider(provider);
+    const baseUrl = env.PUBLIC_APP_URL.replace(/\/$/, '');
+    let intent;
+    try {
+      intent = await adapter.createIntent({
+        paymentId: payment._id.toString(),
+        propertyId: subscriptionId, // adapter uses this as an opaque ref
+        amount,
+        currency: currency.toUpperCase(),
+        description: `OSK ${planName} subscription`,
+        successUrl: `${baseUrl}/dashboard/subscription?status=success`,
+        cancelUrl: `${baseUrl}/dashboard/subscription?status=cancelled`,
+        customerEmail: actor.email,
+      });
+    } catch (err) {
+      logger.warn(
+        {
+          actorId: actor.id,
+          provider,
+          subscriptionId,
+          reason: String((err as { message?: unknown })?.message ?? err),
+        },
+        'payments.subscription provider rejected intent creation',
+      );
+      throw new ConflictError(providerIntentErrorMessage(err));
+    }
+
+    payment.providerRef = intent.providerRef;
+    payment.metadata = new Map(Object.entries(intent.metadata));
+    if (payment.status === 'pending') payment.status = 'processing';
+    await payment.save();
+
+    return { payment: toPaymentDTO(payment), redirectUrl: intent.redirectUrl };
+  },
+
+  /**
    * Admin-only confirmation — used for bank-transfer or to manually
    * resolve a stuck card payment. Promotes the listing to published.
    */
@@ -180,7 +262,10 @@ export const paymentService = {
     return payment;
   },
 
-  /** Internal — bump the listing + payment to succeeded/published. */
+  /** Internal — flip a payment to succeeded and activate the right thing
+   *  on the other side. The Payment row tells us what: subscription
+   *  payments activate the subscription, listing payments publish the
+   *  property. Each branch is a no-op if the linked id is missing. */
   async markSucceeded(paymentId: string): Promise<PaymentDTO | null> {
     if (!mongoose.isValidObjectId(paymentId)) return null;
     const payment = await PaymentModel.findById(paymentId).exec();
@@ -189,9 +274,19 @@ export const paymentService = {
 
     payment.status = 'succeeded';
     await payment.save();
-    /* Side-effect: publish the property — fire and forget, the payment
-     * itself is the source of truth. */
-    await propertyService.markPaidAndPublish(payment.property.toString());
+
+    /* Subscription-style payments: activate the subscription + roll
+     * its period end. Listing-style payments (legacy): publish the
+     * property. We branch on which reference the payment carries so
+     * one Payment collection serves both lifecycles. */
+    if (payment.subscription) {
+      await subscriptionService.activate(
+        payment.subscription.toString(),
+        payment._id.toString(),
+      );
+    } else if (payment.property) {
+      await propertyService.markPaidAndPublish(payment.property.toString());
+    }
     return toPaymentDTO(payment);
   },
 

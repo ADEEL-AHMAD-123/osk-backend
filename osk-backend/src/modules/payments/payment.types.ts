@@ -23,7 +23,11 @@ export type { ProviderKey };
 /** Public DTO returned to the seller dashboard + admin views. */
 export interface PaymentDTO {
   id: string;
+  /** Empty string when this payment is for a subscription rather than a
+   *  specific listing — keeps the DTO shape flat for the frontend. */
   propertyId: string;
+  /** Set when this payment activates / renews a subscription. */
+  subscriptionId: string | null;
   userId: string;
   provider: ProviderKey;
   status: PaymentStatus;
