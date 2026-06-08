@@ -50,6 +50,10 @@ class PaystackProvider implements PaymentProvider {
     /* Paystack expects amount in the smallest currency unit (kobo for NGN,
      * cents for USD, etc.). */
     const minor = Math.round(params.amount * 100);
+    /* Paystack rejects duplicate references. Use a unique per-attempt
+     * provider reference while keeping our internal paymentId in metadata
+     * for webhook reconciliation. */
+    const reference = `osk_${params.paymentId}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const res = await fetch(
       'https://api.paystack.co/transaction/initialize',
       {
@@ -63,7 +67,7 @@ class PaystackProvider implements PaymentProvider {
           currency: params.currency.toUpperCase(),
           email: params.customerEmail ?? `seller-${params.paymentId}@example.com`,
           callback_url: params.successUrl,
-          reference: params.paymentId,
+          reference,
           metadata: {
             paymentId: params.paymentId,
             propertyId: params.propertyId,
@@ -126,7 +130,9 @@ class PaystackProvider implements PaymentProvider {
 
     return {
       ok: true,
-      paymentId: String(json?.data?.reference ?? ''),
+      paymentId: String(
+        json?.data?.metadata?.paymentId ?? json?.data?.reference ?? '',
+      ),
       status: status as VerificationResult['status'],
       amount: typeof json?.data?.amount === 'number'
         ? Number(json.data.amount) / 100
@@ -140,7 +146,12 @@ class PaystackProvider implements PaymentProvider {
 
 function safeJson(raw: string | Buffer): {
   event?: string;
-  data?: { reference?: string; amount?: number; currency?: string };
+  data?: {
+    reference?: string;
+    amount?: number;
+    currency?: string;
+    metadata?: { paymentId?: string };
+  };
 } | null {
   try {
     return JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
