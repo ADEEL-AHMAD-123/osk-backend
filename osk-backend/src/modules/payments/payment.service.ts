@@ -37,6 +37,27 @@ function providerIntentErrorMessage(err: unknown): string {
 }
 
 /**
+ * Resolve which frontend origin should receive provider success/cancel
+ * redirects. We only trust origins explicitly listed in CORS_ORIGIN.
+ */
+function resolveCheckoutBaseUrl(requestOrigin?: string): string {
+  const fallback = env.PUBLIC_APP_URL.replace(/\/$/, '');
+  if (!requestOrigin) return fallback;
+
+  let normalized = '';
+  try {
+    normalized = new URL(requestOrigin).origin;
+  } catch {
+    return fallback;
+  }
+
+  const allowed = env.CORS_ORIGIN.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+/**
  * Payments application layer — subscription-only.
  *
  * Entry points:
@@ -66,6 +87,7 @@ export const paymentService = {
     amount: number,
     currency: string,
     planName: string,
+    requestOrigin?: string,
   ): Promise<{ payment: PaymentDTO; redirectUrl: string }> {
     if (!mongoose.isValidObjectId(subscriptionId)) {
       throw new NotFoundError('Subscription not found');
@@ -126,7 +148,7 @@ export const paymentService = {
       }));
 
     const adapter = getProvider(provider);
-    const baseUrl = env.PUBLIC_APP_URL.replace(/\/$/, '');
+    const baseUrl = resolveCheckoutBaseUrl(requestOrigin);
     let intent;
     try {
       intent = await adapter.createIntent({

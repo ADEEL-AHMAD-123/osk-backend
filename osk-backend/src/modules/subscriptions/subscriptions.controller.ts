@@ -95,6 +95,7 @@ export const subscribe: RequestHandler = async (req, res) => {
     checkout.amount,
     checkout.currency,
     plan?.name ?? 'subscription',
+    typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
   );
 
   sendSuccess(
