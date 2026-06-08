@@ -1,7 +1,8 @@
 import type { RequestHandler } from 'express';
-import { UnauthorizedError } from '../../shared/errors';
+import { UnauthorizedError, ValidationError } from '../../shared/errors';
 import { sendSuccess } from '../../shared/response';
 import type { AuthUser } from '../../shared/middleware/auth';
+import { attachProofSchema } from './payment.schema';
 import { paymentService } from './payment.service';
 import { PROVIDER_KEYS, type ProviderKey } from './payment.types';
 
@@ -10,6 +11,28 @@ import { PROVIDER_KEYS, type ProviderKey } from './payment.types';
 export const listMyPayments: RequestHandler = async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
   sendSuccess(res, await paymentService.listMine(req.user as AuthUser));
+};
+
+export const getPaymentById: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  sendSuccess(
+    res,
+    await paymentService.getById(req.user as AuthUser, req.params.id!),
+  );
+};
+
+export const attachProof: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  const parsed = attachProofSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(parsed.error.issues);
+  sendSuccess(
+    res,
+    await paymentService.attachProof(
+      req.user as AuthUser,
+      req.params.id!,
+      parsed.data.url,
+    ),
+  );
 };
 
 /* ─── admin endpoints ────────────────────────────────────────────── */

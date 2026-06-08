@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { env } from '../../../config/env';
 import type {
   CreateIntentParams,
   ProviderIntent,
@@ -9,10 +10,15 @@ import type { PaymentProvider } from './provider.interface';
 /**
  * Bank-transfer adapter.
  *
- * There's no integration here — the seller is told to wire money to the
- * bank details the admin has configured, and the admin then marks the
- * payment paid via POST /payments/:id/confirm. The "redirect URL" sends
- * the user to a status page on the front-end that shows the instructions.
+ * There's no provider integration — the seller is told to wire money
+ * to the bank details the admin configured, and the admin then
+ * confirms the payment from /admin/payments after the wire clears.
+ *
+ * The redirect URL points to a dedicated front-end page that shows
+ * the bank instructions, the amount due, and lets the seller upload
+ * a screenshot of the payment as proof. The pay page knows nothing
+ * about the original successUrl — `paymentId` is enough to fetch
+ * everything else.
  */
 class BankTransferProvider implements PaymentProvider {
   readonly key = 'bank-transfer' as const;
@@ -25,13 +31,11 @@ class BankTransferProvider implements PaymentProvider {
 
   async createIntent(params: CreateIntentParams): Promise<ProviderIntent> {
     const ref = `bank_${crypto.randomBytes(8).toString('hex')}`;
+    const baseUrl = env.PUBLIC_APP_URL.replace(/\/$/, '');
     return {
       providerRef: ref,
-      redirectUrl: appendQuery(params.successUrl, {
-        bank: '1',
-        ref,
-      }),
-      metadata: { mode: 'bank-transfer' },
+      redirectUrl: `${baseUrl}/dashboard/subscription/bank-transfer/${params.paymentId}`,
+      metadata: { mode: 'bank-transfer', ref },
     };
   }
 
@@ -40,14 +44,6 @@ class BankTransferProvider implements PaymentProvider {
      * admin-only confirm endpoint. */
     return { ok: false, status: 'failed' };
   }
-}
-
-function appendQuery(url: string, params: Record<string, string>): string {
-  const u = new URL(url, 'http://placeholder');
-  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-  return url.startsWith('http')
-    ? u.toString()
-    : `${u.pathname}?${u.searchParams.toString()}`;
 }
 
 export const bankTransferProvider = new BankTransferProvider();

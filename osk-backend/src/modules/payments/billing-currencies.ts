@@ -28,8 +28,11 @@ export type BillingCurrency = (typeof BILLING_CURRENCIES)[number];
  *  - Stripe / PayPal: stick to the major cards-supported set. Both
  *    accept many more currencies in practice; the list here is the
  *    safe subset we're willing to expose without per-region testing.
- *  - Paystack: NGN, GHS, ZAR, USD, KES. The operator confirmed NGN
- *    and GHS work; the rest are documented as supported.
+ *  - Paystack: NGN, GHS, ZAR, KES. The operator confirmed NGN and GHS
+ *    work and that USD is rejected by their Paystack account, so we
+ *    leave USD out — sellers paying in USD use Stripe / PayPal /
+ *    bank-transfer instead. Add it back here per-deployment if a
+ *    customer's Paystack account supports USD.
  *  - Bank transfer: a manual flow, so we trust the admin to actually
  *    accept whatever currency the wire arrives in. All of them.
  *
@@ -43,7 +46,7 @@ export const PROVIDER_BILLING_CURRENCIES: Record<
 > = {
   stripe: ['USD', 'CAD', 'EUR', 'GBP', 'AUD'],
   paypal: ['USD', 'CAD', 'EUR', 'GBP', 'AUD'],
-  paystack: ['NGN', 'GHS', 'ZAR', 'USD', 'KES'],
+  paystack: ['NGN', 'GHS', 'ZAR', 'KES'],
   'bank-transfer': [
     'USD',
     'CAD',

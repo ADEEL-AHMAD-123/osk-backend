@@ -37,6 +37,10 @@ export interface PaymentDTO {
   providerRef?: string;
   /** Provider-specific opaque metadata, e.g. checkout url for redirect. */
   metadata: Record<string, string>;
+  /** Bank-transfer proof screenshot URL, when the seller has uploaded it. */
+  proofUrl?: string;
+  /** ISO timestamp the proof was uploaded. */
+  proofUploadedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

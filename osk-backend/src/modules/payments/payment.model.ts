@@ -23,6 +23,12 @@ export interface PaymentDoc extends Document {
   providerRef?: string;
   /** Provider-specific opaque metadata — checkout URL, client secret, etc. */
   metadata: Map<string, string>;
+  /** Screenshot / receipt URL the seller uploaded as proof of a
+   *  bank-transfer payment. Surfaced on the admin payments view so
+   *  the operator can verify before confirming. */
+  proofUrl?: string;
+  /** When the seller uploaded the proof. */
+  proofUploadedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +57,8 @@ const paymentSchema = new Schema<PaymentDoc>(
     currency: { type: String, required: true, uppercase: true, length: 3 },
     providerRef: { type: String, index: true, sparse: true },
     metadata: { type: Map, of: String, default: new Map() },
+    proofUrl: { type: String },
+    proofUploadedAt: { type: Date },
   },
   { timestamps: true },
 );

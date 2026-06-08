@@ -2,7 +2,9 @@ import express, { Router } from 'express';
 import { asyncHandler } from '../../shared/asyncHandler';
 import { authenticate, authorize } from '../../shared/middleware/auth';
 import {
+  attachProof,
   confirmPayment,
+  getPaymentById,
   listAdminPayments,
   listMyPayments,
   makeWebhookHandler,
@@ -24,6 +26,10 @@ export const paymentRoutes = Router();
 
 /* Seller */
 paymentRoutes.get('/mine', authenticate, asyncHandler(listMyPayments));
+paymentRoutes.get('/:id', authenticate, asyncHandler(getPaymentById));
+/* Bank-transfer proof of payment — seller uploads to /media/upload
+ * first, then POSTs the returned URL here so the row is linked. */
+paymentRoutes.post('/:id/proof', authenticate, asyncHandler(attachProof));
 
 /* Admin */
 paymentRoutes.get(

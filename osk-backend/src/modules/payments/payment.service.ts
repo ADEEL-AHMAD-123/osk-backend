@@ -233,6 +233,64 @@ export const paymentService = {
     return docs.map(toPaymentDTO);
   },
 
+  /**
+   * Fetch a single payment. Sellers can only see their own rows;
+   * admins can see anyone's. Used by the bank-transfer pay page to
+   * render amount + reference and check whether a proof has already
+   * been uploaded.
+   */
+  async getById(actor: AuthUser, paymentId: string): Promise<PaymentDTO> {
+    if (!mongoose.isValidObjectId(paymentId)) {
+      throw new NotFoundError('Payment not found');
+    }
+    const doc = await PaymentModel.findById(paymentId).exec();
+    if (!doc) throw new NotFoundError('Payment not found');
+    if (doc.user.toString() !== actor.id && actor.role !== 'admin') {
+      throw new ForbiddenError('You can only view your own payments');
+    }
+    return toPaymentDTO(doc);
+  },
+
+  /**
+   * Attach a proof-of-payment URL (typically a screenshot of the
+   * bank-transfer confirmation) to a pending payment. Restricted to
+   * the seller who owns the row.
+   *
+   * Side-effects: nudges the payment to 'processing' so the admin
+   * payments view can filter for "proof submitted, awaiting review"
+   * without scanning every metadata field. The admin still has to
+   * call `confirm` to actually flip it to 'succeeded'.
+   */
+  async attachProof(
+    actor: AuthUser,
+    paymentId: string,
+    url: string,
+  ): Promise<PaymentDTO> {
+    if (!mongoose.isValidObjectId(paymentId)) {
+      throw new NotFoundError('Payment not found');
+    }
+    const doc = await PaymentModel.findById(paymentId).exec();
+    if (!doc) throw new NotFoundError('Payment not found');
+    if (doc.user.toString() !== actor.id) {
+      throw new ForbiddenError('You can only upload proof for your own payments');
+    }
+    if (doc.provider !== 'bank-transfer') {
+      throw new ConflictError(
+        'Proof uploads only apply to bank-transfer payments.',
+      );
+    }
+    if (doc.status === 'succeeded' || doc.status === 'refunded') {
+      throw new ConflictError(
+        `This payment is already ${doc.status} — no proof needed.`,
+      );
+    }
+    doc.proofUrl = url;
+    doc.proofUploadedAt = new Date();
+    if (doc.status === 'pending') doc.status = 'processing';
+    await doc.save();
+    return toPaymentDTO(doc);
+  },
+
   async listAdmin(): Promise<PaymentDTO[]> {
     const docs = await PaymentModel.find()
       .sort({ createdAt: -1 })

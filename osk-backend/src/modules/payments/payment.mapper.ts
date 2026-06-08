@@ -20,6 +20,8 @@ export function toPaymentDTO(doc: PaymentDoc): PaymentDTO {
     currency: doc.currency,
     providerRef: doc.providerRef,
     metadata,
+    proofUrl: doc.proofUrl,
+    proofUploadedAt: doc.proofUploadedAt?.toISOString(),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };
