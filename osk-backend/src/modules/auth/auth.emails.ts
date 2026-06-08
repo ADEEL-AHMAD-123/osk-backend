@@ -64,7 +64,8 @@ export async function sendVerifyEmail({ to, name, token }: VerifyEmailParams): P
   );
   const text = `Hi ${first},\n\nWelcome to ${APP_NAME}. Confirm your email:\n${url}\n\nIf you didn't expect this email, ignore it.`;
   try {
-    await getEmailProvider().send({
+    const provider = await getEmailProvider();
+    await provider.send({
       to,
       subject: `Confirm your ${APP_NAME} email`,
       html,
@@ -97,7 +98,8 @@ export async function sendPasswordResetEmail({
   );
   const text = `Hi ${first},\n\nReset your ${APP_NAME} password within the next hour:\n${url}\n\nIf you didn't request this, ignore the email.`;
   try {
-    await getEmailProvider().send({
+    const provider = await getEmailProvider();
+    await provider.send({
       to,
       subject: `Reset your ${APP_NAME} password`,
       html,

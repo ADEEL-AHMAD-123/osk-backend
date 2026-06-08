@@ -45,6 +45,13 @@ const envSchema = z.object({
   PAYPAL_WEBHOOK_ID: z.string().optional(),
 
   PAYSTACK_SECRET_KEY: z.string().optional(),
+
+  /* ─── Transactional email (bootstrap fallback) ─────────────────────
+   * The selected provider + credentials live in EmailSettings (DB),
+   * editable from /admin/email. These env vars are read only on cold
+   * boot before the admin has filled anything in — the DB value
+   * takes precedence as soon as it's saved. */
+  RESEND_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

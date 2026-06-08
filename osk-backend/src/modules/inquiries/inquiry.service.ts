@@ -65,18 +65,23 @@ export const inquiryService = {
       .catch((err) => logger.warn({ err }, 'notification.notify failed'));
 
     // Fire-and-forget — never block the request on email delivery.
-    void getEmailProvider()
-      .send({
-        to: `Owner <owner-${ownerId.toString()}@osk.dev>`, // TODO: resolve real owner email
-        subject: `New inquiry on your listing`,
-        replyTo: body.email,
-        html: `
-          <p>You have a new inquiry from <strong>${body.name}</strong>.</p>
-          <p>${body.message}</p>
-          <p>Reply directly to this email to reach them.</p>
-        `,
-      })
-      .catch((err) => logger.warn({ err }, 'email.send failed'));
+    void (async () => {
+      try {
+        const provider = await getEmailProvider();
+        await provider.send({
+          to: `Owner <owner-${ownerId.toString()}@osk.dev>`, // TODO: resolve real owner email
+          subject: `New inquiry on your listing`,
+          replyTo: body.email,
+          html: `
+            <p>You have a new inquiry from <strong>${body.name}</strong>.</p>
+            <p>${body.message}</p>
+            <p>Reply directly to this email to reach them.</p>
+          `,
+        });
+      } catch (err) {
+        logger.warn({ err }, 'email.send failed');
+      }
+    })();
 
     return inquiry;
   },

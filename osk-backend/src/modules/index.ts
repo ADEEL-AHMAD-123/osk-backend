@@ -19,6 +19,7 @@ import {
   subscriptionPlanRoutes,
   subscriptionRoutes,
 } from './subscriptions/subscriptions.routes';
+import { emailRoutes } from './email/email.routes';
 
 /**
  * Module registry — the ONE place modules are wired into the API. To add a
@@ -45,6 +46,7 @@ export function registerModules(): Router {
   router.use('/payments', paymentRoutes);
   router.use('/subscription-plans', subscriptionPlanRoutes);
   router.use('/subscriptions', subscriptionRoutes);
+  router.use('/admin/email', emailRoutes);
 
   return router;
 }
