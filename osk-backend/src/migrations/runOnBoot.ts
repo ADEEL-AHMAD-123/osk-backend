@@ -66,7 +66,10 @@ async function ensureSubscriptionCatalog(): Promise<void> {
       slug: 'gold',
       name: 'Gold',
       tagline: 'For growing agencies',
-      prices: [{ currency: 'USD', amount: 99 }],
+      prices: [
+        { currency: 'USD', amount: 99 },
+        { currency: 'NGN', amount: 99000 },
+      ],
       interval: 'month' as const,
       sortOrder: 2,
       highlight: false,
@@ -94,7 +97,10 @@ async function ensureSubscriptionCatalog(): Promise<void> {
       slug: 'premium',
       name: 'Premium',
       tagline: 'Maximum visibility and scale',
-      prices: [{ currency: 'USD', amount: 199 }],
+      prices: [
+        { currency: 'USD', amount: 199 },
+        { currency: 'NGN', amount: 199000 },
+      ],
       interval: 'month' as const,
       sortOrder: 3,
       highlight: true,
