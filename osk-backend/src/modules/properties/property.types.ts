@@ -11,9 +11,11 @@ export const PROPERTY_STATUSES = [
   'pending-review',
   'approved',
   /**
-   * Approved by an admin but the seller still owes payment before the
-   * listing is published. Only used when global payments are enabled
-   * AND the resolved pricing plan is non-zero.
+   * Legacy: previously meant "approved but unpaid". The subscription
+   * model handles publishing gates at submission time, so no new
+   * listing is ever set to this status. Kept in the enum so any
+   * pre-existing rows in the database still load — admins can use the
+   * moderation panel to re-approve them into `published`.
    */
   'awaiting-payment',
   'rejected',

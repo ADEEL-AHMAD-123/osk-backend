@@ -23,9 +23,6 @@ export interface PaymentDoc extends Document {
   providerRef?: string;
   /** Provider-specific opaque metadata — checkout URL, client secret, etc. */
   metadata: Map<string, string>;
-  /** Legacy: per-listing pricing plan refs. Kept nullable for compatibility. */
-  basePlan?: Types.ObjectId;
-  featuredPlan?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,8 +51,6 @@ const paymentSchema = new Schema<PaymentDoc>(
     currency: { type: String, required: true, uppercase: true, length: 3 },
     providerRef: { type: String, index: true, sparse: true },
     metadata: { type: Map, of: String, default: new Map() },
-    basePlan: { type: Schema.Types.ObjectId, ref: 'PricingPlan' },
-    featuredPlan: { type: Schema.Types.ObjectId, ref: 'PricingPlan' },
   },
   { timestamps: true },
 );

@@ -1,25 +1,15 @@
 /**
  * Pricing domain types — shared by model, service, controller, mappers.
  *
- * A `PricingPlan` is a server-defined rule that maps a tuple
- *   (propertyType, listingKind, country, featured)
- * to a price + currency. The resolver scans all active plans and picks
- * the most specific match; the plan with the highest `priority` wins ties.
+ * After moving to a subscription model, this module is no longer about
+ * per-listing pricing plans. It's now purely the operator's payment
+ * configuration: the global enabled toggle, the list of enabled
+ * providers, encrypted provider credentials, and the bank-transfer
+ * instructions surface.
  *
- * `wildcard` values let the admin write broad fallbacks like:
- *   "$50 base price for any homes, anywhere"
- * without listing every country.
+ * Per-listing plans (PricingPlan + the resolver) have been removed.
+ * Subscription plans live in `modules/subscriptions/` instead.
  */
-
-import { LISTING_KINDS, PROPERTY_TYPES } from '../properties/property.types';
-import type { ListingKind, PropertyType } from '../properties/property.types';
-
-/** Sentinel meaning "any value for this axis". */
-export const PLAN_WILDCARD = '*' as const;
-export type Wildcard = typeof PLAN_WILDCARD;
-
-export type PlanPropertyType = PropertyType | Wildcard;
-export type PlanListingKind = ListingKind | Wildcard;
 
 export const PROVIDER_KEYS = [
   'stripe',
@@ -28,31 +18,6 @@ export const PROVIDER_KEYS = [
   'bank-transfer',
 ] as const;
 export type ProviderKey = (typeof PROVIDER_KEYS)[number];
-
-/** Public DTO shape for an admin / seller pricing plan. */
-export interface PricingPlanDTO {
-  id: string;
-  /** Human-readable label shown to admins (e.g. "Standard Home — US"). */
-  name: string;
-  /** Property type or '*' for any. */
-  propertyType: PlanPropertyType;
-  /** Listing kind or '*' for any. */
-  listingKind: PlanListingKind;
-  /** ISO-2 country code (uppercase) or '*' for any. */
-  country: string;
-  /** True if the plan is the price of the *featured upgrade* on top of base. */
-  featured: boolean;
-  /** Price in the smallest readable unit (e.g. 49 for $49). */
-  price: number;
-  /** ISO-4217 currency code (e.g. 'USD', 'CAD'). */
-  currency: string;
-  /** Tie-breaker when multiple matching plans exist (higher = wins). */
-  priority: number;
-  /** Inactive plans are ignored by the resolver. */
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
 
 /**
  * Per-field credential status returned to the admin. We NEVER ship the
@@ -86,7 +51,7 @@ export interface ProviderCredentialsStatus {
 
 /** Admin-facing global payment settings. */
 export interface PaymentSettingsDTO {
-  /** Master switch — false means everything is free, regardless of plans. */
+  /** Master switch — false means payments are off everywhere. */
   paymentsEnabled: boolean;
   /** Providers the seller can pick at the checkout step. Order matters. */
   enabledProviders: ProviderKey[];
@@ -94,28 +59,11 @@ export interface PaymentSettingsDTO {
   bankInstructions: string;
   /** Read-only credential status — admins paste new values via patch. */
   providers: ProviderCredentialsStatus;
+  /**
+   * Convenience map computed server-side: true when each provider has
+   * the minimum credentials it needs to function. The frontend uses this
+   * to render the "Active / Needs setup" badge without having to know
+   * each provider's required field list.
+   */
+  providerReady: Record<ProviderKey, boolean>;
 }
-
-/** The resolver returns the resolved base price + (optional) featured upgrade. */
-export interface ResolvedPrice {
-  base: {
-    amount: number;
-    currency: string;
-    planId: string | null;
-  };
-  featured: {
-    amount: number;
-    currency: string;
-    planId: string | null;
-  } | null;
-  /** True when payments are globally disabled — listing publishes free. */
-  paymentsEnabled: boolean;
-  /** Convenience: total the seller pays (base + featured if applicable). */
-  total: number;
-  /** Currency for the total. */
-  currency: string;
-}
-
-/** Helpful re-exports so other modules don't drill into properties. */
-export { LISTING_KINDS, PROPERTY_TYPES };
-export type { ListingKind, PropertyType };

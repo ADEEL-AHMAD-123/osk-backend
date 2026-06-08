@@ -1,44 +1,5 @@
 import { z } from 'zod';
-import { LISTING_KINDS, PROPERTY_TYPES } from '../properties/property.types';
 import { PROVIDER_KEYS } from './pricing.types';
-
-/** Plan property type / listing kind admit '*' as a wildcard. */
-const planPropertyType = z.union([
-  z.enum(PROPERTY_TYPES),
-  z.literal('*'),
-]);
-const planListingKind = z.union([
-  z.enum(LISTING_KINDS),
-  z.literal('*'),
-]);
-
-/** ISO-2 (uppercased) or '*' (any). */
-const planCountry = z
-  .string()
-  .min(1)
-  .max(2)
-  .transform((v) => v.toUpperCase());
-
-export const createPlanSchema = z.object({
-  name: z.string().min(2).max(80),
-  propertyType: planPropertyType.default('*'),
-  listingKind: planListingKind.default('*'),
-  country: planCountry.default('*'),
-  featured: z.boolean().default(false),
-  price: z.number().nonnegative(),
-  currency: z
-    .string()
-    .length(3)
-    .transform((v) => v.toUpperCase())
-    .default('USD'),
-  priority: z.number().int().default(0),
-  active: z.boolean().default(true),
-});
-
-export type CreatePlanInput = z.infer<typeof createPlanSchema>;
-
-export const updatePlanSchema = createPlanSchema.partial();
-export type UpdatePlanInput = z.infer<typeof updatePlanSchema>;
 
 /**
  * Per-provider credential patch. Every field is optional; the admin can
@@ -83,14 +44,3 @@ export const updateSettingsSchema = z.object({
   paystack: paystackPatch.optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
-
-export const resolveSchema = z.object({
-  propertyType: z.enum(PROPERTY_TYPES),
-  listingKind: z.enum(LISTING_KINDS),
-  country: z
-    .string()
-    .length(2)
-    .transform((v) => v.toUpperCase()),
-  featured: z.coerce.boolean().default(false),
-});
-export type ResolveInput = z.infer<typeof resolveSchema>;

@@ -5,7 +5,6 @@ import {
   NotFoundError,
 } from '../../shared/errors';
 import type { AuthUser } from '../../shared/middleware/auth';
-import { pricingService } from '../pricing/pricing.service';
 import { settingsService } from '../settings/settings.service';
 import { subscriptionService } from '../subscriptions/subscription.service';
 import { propertyRepository, type OwnerAnalytics } from './property.repository';
@@ -262,9 +261,10 @@ export const propertyService = {
   },
 
   /**
-   * Admin moderation — approve publishes the listing OR routes it to
-   * `awaiting-payment` if payments are enabled and the resolver returns
-   * a non-zero base price. Reject sends it back to `rejected`.
+   * Admin moderation — `approve` publishes the listing immediately,
+   * `reject` sends it back to `rejected`. The seller's right to
+   * publish is gated at submission time by their subscription plan
+   * (see `create`), so there's no per-listing payment step here.
    */
   async review(
     id: string,
@@ -277,40 +277,7 @@ export const propertyService = {
         'Only listings pending review can be approved or rejected',
       );
     }
-    if (decision === 'reject') {
-      doc.status = 'rejected';
-      await doc.save();
-      return toPropertyDTO(doc);
-    }
-
-    /* Approve path — consult the pricing resolver. If payments are off
-     * OR the matched plan price is 0, the listing publishes immediately
-     * (the free path is preserved). Otherwise it parks at awaiting-payment
-     * until the seller pays. */
-    const price = await pricingService.resolve({
-      propertyType: doc.type,
-      listingKind: doc.listingKind,
-      country: doc.country,
-      featured: doc.isFeatured,
-    });
-    doc.status =
-      !price.paymentsEnabled || price.total === 0
-        ? 'published'
-        : 'awaiting-payment';
-    await doc.save();
-    return toPropertyDTO(doc);
-  },
-
-  /**
-   * Flip a listing from `awaiting-payment` to `published`. Called by the
-   * payments service once a charge succeeds. The id is opaque so the
-   * payments module can call it without depending on the schema layer.
-   */
-  async markPaidAndPublish(id: string): Promise<PropertyDTO | null> {
-    const doc = await propertyRepository.findById(id);
-    if (!doc) return null;
-    if (doc.status !== 'awaiting-payment') return toPropertyDTO(doc);
-    doc.status = 'published';
+    doc.status = decision === 'reject' ? 'rejected' : 'published';
     await doc.save();
     return toPropertyDTO(doc);
   },

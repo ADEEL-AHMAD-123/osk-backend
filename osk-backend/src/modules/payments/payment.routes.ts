@@ -3,15 +3,18 @@ import { asyncHandler } from '../../shared/asyncHandler';
 import { authenticate, authorize } from '../../shared/middleware/auth';
 import {
   confirmPayment,
-  createIntent,
   listAdminPayments,
   listMyPayments,
-  listPropertyPayments,
   makeWebhookHandler,
 } from './payment.controller';
 
 /**
  * Payments module presentation layer.
+ *
+ * Subscription checkout intents are created from inside the
+ * subscriptions module (POST /subscriptions/subscribe) so this module
+ * only exposes read endpoints, admin confirmation, and provider
+ * webhooks. Per-listing intents have been removed.
  *
  * Webhooks need the *raw* request body so providers can verify the
  * signature. We attach `express.raw()` on the webhook routes only — the
@@ -20,13 +23,7 @@ import {
 export const paymentRoutes = Router();
 
 /* Seller */
-paymentRoutes.post('/intent', authenticate, asyncHandler(createIntent));
 paymentRoutes.get('/mine', authenticate, asyncHandler(listMyPayments));
-paymentRoutes.get(
-  '/by-property/:propertyId',
-  authenticate,
-  asyncHandler(listPropertyPayments),
-);
 
 /* Admin */
 paymentRoutes.get(

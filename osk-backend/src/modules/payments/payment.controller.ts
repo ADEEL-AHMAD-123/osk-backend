@@ -1,48 +1,15 @@
 import type { RequestHandler } from 'express';
-import { UnauthorizedError, ValidationError } from '../../shared/errors';
+import { UnauthorizedError } from '../../shared/errors';
 import { sendSuccess } from '../../shared/response';
-import { logger } from '../../config/logger';
 import type { AuthUser } from '../../shared/middleware/auth';
-import { createIntentSchema } from './payment.schema';
 import { paymentService } from './payment.service';
 import { PROVIDER_KEYS, type ProviderKey } from './payment.types';
 
 /* ─── seller endpoints ───────────────────────────────────────────── */
 
-export const createIntent: RequestHandler = async (req, res) => {
-  if (!req.user) throw new UnauthorizedError();
-  const parsed = createIntentSchema.safeParse(req.body);
-  if (!parsed.success) throw new ValidationError(parsed.error.issues);
-  logger.info(
-    {
-      requestId: res.locals.requestId,
-      actorId: req.user.id,
-      payload: parsed.data,
-    },
-    'payments.intent request payload',
-  );
-  const result = await paymentService.createIntent(
-    req.user as AuthUser,
-    parsed.data.propertyId,
-    parsed.data.provider,
-  );
-  sendSuccess(res, result, { status: 201 });
-};
-
 export const listMyPayments: RequestHandler = async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
   sendSuccess(res, await paymentService.listMine(req.user as AuthUser));
-};
-
-export const listPropertyPayments: RequestHandler = async (req, res) => {
-  if (!req.user) throw new UnauthorizedError();
-  sendSuccess(
-    res,
-    await paymentService.listForProperty(
-      req.user as AuthUser,
-      req.params.propertyId!,
-    ),
-  );
 };
 
 /* ─── admin endpoints ────────────────────────────────────────────── */

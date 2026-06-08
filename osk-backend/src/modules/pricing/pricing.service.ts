@@ -1,21 +1,25 @@
-import mongoose from 'mongoose';
-import { NotFoundError } from '../../shared/errors';
 import { decryptSecret, encryptSecret } from '../../shared/crypto/secrets';
 import { env } from '../../config/env';
-import { PricingPlanModel, type PricingPlanDoc } from './pricingPlan.model';
 import {
   DEFAULT_BANK_INSTRUCTIONS,
   LEGACY_DEFAULT_BANK_INSTRUCTIONS,
   PaymentSettingsModel,
 } from './paymentSettings.model';
-import { toPaymentSettingsDTO, toPricingPlanDTO } from './pricing.mapper';
-import type {
-  CreatePlanInput,
-  ResolveInput,
-  UpdatePlanInput,
-  UpdateSettingsInput,
-} from './pricing.schema';
-import { PLAN_WILDCARD, type PaymentSettingsDTO, type PricingPlanDTO, type ResolvedPrice } from './pricing.types';
+import { toPaymentSettingsDTO } from './pricing.mapper';
+import type { UpdateSettingsInput } from './pricing.schema';
+import type { PaymentSettingsDTO } from './pricing.types';
+
+/**
+ * Pricing module application layer. After the move to subscriptions,
+ * this is purely the operator's payment configuration:
+ *  - the singleton `PaymentSettings` document
+ *  - encrypted provider credentials, with masked / readiness views
+ *  - a `getProviderSecrets` helper used by provider adapters at request
+ *    time to read the decrypted values (falling back to env on cold
+ *    boot)
+ *
+ * Per-listing pricing plans + resolver have been removed.
+ */
 
 /**
  * Decrypted credentials used by provider adapters at request time. Each
@@ -43,103 +47,7 @@ function dbOrEnv(stored: string, envValue: string | undefined): string {
   return decoded || envValue || '';
 }
 
-/**
- * Resolve a plan score — higher is more specific. We prefer exact axis
- * matches over wildcards so an admin can layer fine rules on top of broad
- * fallbacks without having to delete the fallback.
- */
-function specificityScore(plan: PricingPlanDoc): number {
-  let score = 0;
-  /* Country decides the pricing/currency region, so country-specific
-   * plans must beat global fallbacks even when those fallbacks are more
-   * specific on type/kind. Within the same country slice, type/kind
-   * still refine the match as before. */
-  if (plan.country !== PLAN_WILDCARD) score += 8;
-  if (plan.propertyType !== PLAN_WILDCARD) score += 4;
-  if (plan.listingKind !== PLAN_WILDCARD) score += 2;
-  return score;
-}
-
-function pickBest(plans: PricingPlanDoc[]): PricingPlanDoc | null {
-  if (plans.length === 0) return null;
-  return plans.reduce((best, current) => {
-    const a = specificityScore(current);
-    const b = specificityScore(best);
-    if (a > b) return current;
-    if (a < b) return best;
-    /* Ties broken by admin-set priority (high wins), then newest first. */
-    if (current.priority !== best.priority) {
-      return current.priority > best.priority ? current : best;
-    }
-    return current.createdAt > best.createdAt ? current : best;
-  });
-}
-
-/** Filter the candidate plans so each axis is either an exact match or wildcard. */
-function matchPlans(
-  plans: PricingPlanDoc[],
-  q: ResolveInput,
-  featured: boolean,
-): PricingPlanDoc[] {
-  return plans.filter((p) => {
-    if (p.featured !== featured) return false;
-    if (
-      p.propertyType !== PLAN_WILDCARD &&
-      p.propertyType !== q.propertyType
-    ) {
-      return false;
-    }
-    if (
-      p.listingKind !== PLAN_WILDCARD &&
-      p.listingKind !== q.listingKind
-    ) {
-      return false;
-    }
-    if (p.country !== PLAN_WILDCARD && p.country !== q.country) {
-      return false;
-    }
-    return true;
-  });
-}
-
 export const pricingService = {
-  /* ─── Plans CRUD ───────────────────────────────────────────────── */
-
-  async listPlans(): Promise<PricingPlanDTO[]> {
-    const docs = await PricingPlanModel.find()
-      .sort({ active: -1, featured: 1, priority: -1, createdAt: -1 })
-      .exec();
-    return docs.map(toPricingPlanDTO);
-  },
-
-  async createPlan(input: CreatePlanInput): Promise<PricingPlanDTO> {
-    const doc = await PricingPlanModel.create(input);
-    return toPricingPlanDTO(doc);
-  },
-
-  async updatePlan(
-    id: string,
-    input: UpdatePlanInput,
-  ): Promise<PricingPlanDTO> {
-    if (!mongoose.isValidObjectId(id)) {
-      throw new NotFoundError('Pricing plan not found');
-    }
-    const doc = await PricingPlanModel.findByIdAndUpdate(id, input, {
-      new: true,
-      runValidators: true,
-    }).exec();
-    if (!doc) throw new NotFoundError('Pricing plan not found');
-    return toPricingPlanDTO(doc);
-  },
-
-  async deletePlan(id: string): Promise<void> {
-    if (!mongoose.isValidObjectId(id)) {
-      throw new NotFoundError('Pricing plan not found');
-    }
-    const res = await PricingPlanModel.findByIdAndDelete(id).exec();
-    if (!res) throw new NotFoundError('Pricing plan not found');
-  },
-
   /* ─── Settings (singleton) ────────────────────────────────────── */
 
   async getSettings(): Promise<PaymentSettingsDTO> {
@@ -261,64 +169,6 @@ export const pricingService = {
           env.PAYSTACK_SECRET_KEY,
         ),
       },
-    };
-  },
-
-  /* ─── Resolver ────────────────────────────────────────────────── */
-
-  /**
-   * Resolve the price a seller pays for a listing matching `(type, kind,
-   * country, featured)`. Returns the base price + optional featured
-   * add-on. Returns {paymentsEnabled:false, …} if the global toggle is
-   * off — callers can use this to skip the payment step entirely.
-   */
-  async resolve(input: ResolveInput): Promise<ResolvedPrice> {
-    const settings = await this.getSettings();
-    if (!settings.paymentsEnabled) {
-      return {
-        base: { amount: 0, currency: 'USD', planId: null },
-        featured: null,
-        paymentsEnabled: false,
-        total: 0,
-        currency: 'USD',
-      };
-    }
-
-    /* Single read for both featured / non-featured matches so the resolver
-     * doesn't need to round-trip mongo twice. */
-    const candidates = await PricingPlanModel.find({ active: true }).exec();
-
-    const baseMatch = pickBest(matchPlans(candidates, input, false));
-    const featuredMatch = input.featured
-      ? pickBest(matchPlans(candidates, input, true))
-      : null;
-
-    const base = baseMatch
-      ? {
-          amount: baseMatch.price,
-          currency: baseMatch.currency,
-          planId: baseMatch._id.toString(),
-        }
-      : { amount: 0, currency: 'USD', planId: null };
-
-    const featured = featuredMatch
-      ? {
-          amount: featuredMatch.price,
-          currency: featuredMatch.currency,
-          planId: featuredMatch._id.toString(),
-        }
-      : null;
-
-    /* Mixed currencies between base + featured would be a pricing setup
-     * bug. We coerce to the base currency for the total — admins should
-     * keep currencies aligned in the matching slice. */
-    const total = base.amount + (featured?.amount ?? 0);
-    return {
-      base,
-      featured,
-      paymentsEnabled: true,
-      total,
-      currency: base.currency,
     };
   },
 };

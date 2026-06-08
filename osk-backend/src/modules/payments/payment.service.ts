@@ -7,8 +7,6 @@ import {
 import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 import type { AuthUser } from '../../shared/middleware/auth';
-import { PropertyModel } from '../properties/property.model';
-import { propertyService } from '../properties/property.service';
 import { pricingService } from '../pricing/pricing.service';
 import { subscriptionService } from '../subscriptions/subscription.service';
 import { PaymentModel, type PaymentDoc } from './payment.model';
@@ -21,16 +19,12 @@ import type {
   VerificationResult,
 } from './payment.types';
 
-const PAYSTACK_SUPPORTED_CURRENCIES = new Set([
-  'NGN',
-]);
-
 function providerIntentErrorMessage(err: unknown): string {
   const message = String((err as { message?: unknown })?.message ?? '').trim();
   if (!message) return 'Could not start payment right now. Please try again.';
 
   if (/Currency not supported by merchant/i.test(message)) {
-    return 'This payment method is not enabled for the listing currency. Please choose another provider or contact support.';
+    return 'This payment method is not enabled for the subscription currency. Please choose another provider or contact support.';
   }
   if (/Invalid Email Address Passed/i.test(message)) {
     return 'A valid customer email is required by the payment provider.';
@@ -42,132 +36,22 @@ function providerIntentErrorMessage(err: unknown): string {
 }
 
 /**
- * Payments application layer.
+ * Payments application layer — subscription-only.
  *
- * Two main entry points:
- *  - `createIntent`   — seller picks a provider; we resolve the price,
- *                       create a Payment row in 'pending', call the
- *                       provider adapter and persist the returned ref.
- *  - `handleWebhook`  — provider adapter parses + verifies the body;
- *                       on success we promote the property to 'published'.
+ * Entry points:
+ *  - `createSubscriptionIntent` — seller picked a paid plan; we ask the
+ *                                 provider for a hosted checkout session
+ *                                 and hand back a redirect URL.
+ *  - `handleWebhook`            — provider verifies the body; on
+ *                                 success we activate the subscription.
+ *  - `confirm`                  — admin-only manual confirmation
+ *                                 (mostly used for bank-transfer
+ *                                 subscriptions).
  *
- * Manual confirmation (bank-transfer) uses `confirm` instead.
+ * Per-listing payment intents have been removed in favour of the
+ * subscription model in `modules/subscriptions/`.
  */
 export const paymentService = {
-  async createIntent(
-    actor: AuthUser,
-    propertyId: string,
-    provider: ProviderKey,
-  ): Promise<{ payment: PaymentDTO; redirectUrl: string }> {
-    if (!mongoose.isValidObjectId(propertyId)) {
-      throw new NotFoundError('Property not found');
-    }
-    const property = await PropertyModel.findById(propertyId).exec();
-    if (!property) throw new NotFoundError('Property not found');
-    if (property.owner.toString() !== actor.id && actor.role !== 'admin') {
-      throw new ForbiddenError('Only the listing owner can pay for it');
-    }
-    if (property.status !== 'awaiting-payment') {
-      throw new ConflictError(
-        `Listing is "${property.status}" — payments are only accepted on awaiting-payment listings`,
-      );
-    }
-
-    /* Re-resolve price now so a seller never pays last week's number. */
-    const price = await pricingService.resolve({
-      propertyType: property.type,
-      listingKind: property.listingKind,
-      country: property.country,
-      featured: property.isFeatured,
-    });
-    if (!price.paymentsEnabled || price.total === 0) {
-      /* Edge case: admin disabled payments after approval. Publish + bail. */
-      await propertyService.markPaidAndPublish(propertyId);
-      throw new ConflictError(
-        'Payments are currently disabled — your listing has been published.',
-      );
-    }
-
-    /* Validate selected provider is enabled in admin settings. */
-    const settings = await pricingService.getSettings();
-    if (!settings.enabledProviders.includes(provider)) {
-      throw new ConflictError(
-        `Provider "${provider}" is currently disabled by the operator.`,
-      );
-    }
-
-    if (
-      provider === 'paystack' &&
-      !PAYSTACK_SUPPORTED_CURRENCIES.has(price.currency.toUpperCase())
-    ) {
-      throw new ConflictError(
-        `Paystack does not support ${price.currency.toUpperCase()} for this listing. Please choose Stripe, PayPal, or bank transfer.`,
-      );
-    }
-
-    /* Reuse a still-pending intent if it exists, to avoid leaving orphans. */
-    const existing = await PaymentModel.findOne({
-      property: property._id,
-      provider,
-      status: { $in: ['pending', 'processing'] satisfies PaymentStatus[] },
-    })
-      .sort({ createdAt: -1 })
-      .exec();
-
-    const payment =
-      existing ??
-      (await PaymentModel.create({
-        property: property._id,
-        user: actor.id,
-        provider,
-        status: 'pending',
-        amount: price.total,
-        currency: price.currency,
-        basePlan: price.base.planId ?? undefined,
-        featuredPlan: price.featured?.planId ?? undefined,
-      }));
-
-    /* Always re-issue the intent — providers may have invalidated stale
-     * sessions. We persist the new ref + metadata on the existing row. */
-    const adapter = getProvider(provider);
-    const baseUrl = env.PUBLIC_APP_URL.replace(/\/$/, '');
-    let intent;
-    try {
-      intent = await adapter.createIntent({
-        paymentId: payment._id.toString(),
-        propertyId: property._id.toString(),
-        amount: price.total,
-        currency: price.currency,
-        description: `OSK listing — ${property.title}`,
-        successUrl: `${baseUrl}/dashboard/listings/${property.slug}/payment?status=success`,
-        cancelUrl: `${baseUrl}/dashboard/listings/${property.slug}/payment?status=cancelled`,
-        customerEmail: actor.email,
-      });
-    } catch (err) {
-      logger.warn(
-        {
-          actorId: actor.id,
-          provider,
-          propertyId: property._id.toString(),
-          price: {
-            total: price.total,
-            currency: price.currency,
-          },
-          reason: String((err as { message?: unknown })?.message ?? err),
-        },
-        'payments.intent provider rejected intent creation',
-      );
-      throw new ConflictError(providerIntentErrorMessage(err));
-    }
-
-    payment.providerRef = intent.providerRef;
-    payment.metadata = new Map(Object.entries(intent.metadata));
-    if (payment.status === 'pending') payment.status = 'processing';
-    await payment.save();
-
-    return { payment: toPaymentDTO(payment), redirectUrl: intent.redirectUrl };
-  },
-
   /**
    * Subscription checkout. Creates a Payment row pointed at a pending
    * subscription, asks the chosen provider to mint a hosted checkout
@@ -187,9 +71,24 @@ export const paymentService = {
     }
 
     const settings = await pricingService.getSettings();
+    if (!settings.paymentsEnabled) {
+      throw new ConflictError(
+        'Payments are currently disabled by the operator.',
+      );
+    }
     if (!settings.enabledProviders.includes(provider)) {
       throw new ConflictError(
         `Provider "${provider}" is currently disabled by the operator.`,
+      );
+    }
+    /* Refuse to issue an intent for a provider the admin hasn't
+     * finished configuring yet — surfacing a clear setup error is far
+     * better than letting the provider adapter fail with a generic
+     * "missing key" later in the request. Bank-transfer is always
+     * considered ready (it's a manual flow). */
+    if (provider !== 'bank-transfer' && !settings.providerReady[provider]) {
+      throw new ConflictError(
+        `Provider "${provider}" is enabled but missing credentials. Ask the operator to finish configuring it.`,
       );
     }
 
@@ -251,7 +150,8 @@ export const paymentService = {
 
   /**
    * Admin-only confirmation — used for bank-transfer or to manually
-   * resolve a stuck card payment. Promotes the listing to published.
+   * resolve a stuck card payment. Activates whatever the payment is
+   * pointed at (subscription).
    */
   async confirm(actor: AuthUser, paymentId: string): Promise<PaymentDTO> {
     if (actor.role !== 'admin') {
@@ -262,10 +162,9 @@ export const paymentService = {
     return payment;
   },
 
-  /** Internal — flip a payment to succeeded and activate the right thing
-   *  on the other side. The Payment row tells us what: subscription
-   *  payments activate the subscription, listing payments publish the
-   *  property. Each branch is a no-op if the linked id is missing. */
+  /** Internal — flip a payment to succeeded and activate the linked
+   *  subscription. Legacy per-listing payments are no-ops here (they
+   *  just flip the Payment row, no property publishing). */
   async markSucceeded(paymentId: string): Promise<PaymentDTO | null> {
     if (!mongoose.isValidObjectId(paymentId)) return null;
     const payment = await PaymentModel.findById(paymentId).exec();
@@ -275,17 +174,11 @@ export const paymentService = {
     payment.status = 'succeeded';
     await payment.save();
 
-    /* Subscription-style payments: activate the subscription + roll
-     * its period end. Listing-style payments (legacy): publish the
-     * property. We branch on which reference the payment carries so
-     * one Payment collection serves both lifecycles. */
     if (payment.subscription) {
       await subscriptionService.activate(
         payment.subscription.toString(),
         payment._id.toString(),
       );
-    } else if (payment.property) {
-      await propertyService.markPaidAndPublish(payment.property.toString());
     }
     return toPaymentDTO(payment);
   },
@@ -324,25 +217,6 @@ export const paymentService = {
     const docs = await PaymentModel.find({ user: actor.id })
       .sort({ createdAt: -1 })
       .limit(50)
-      .exec();
-    return docs.map(toPaymentDTO);
-  },
-
-  async listForProperty(
-    actor: AuthUser,
-    propertyId: string,
-  ): Promise<PaymentDTO[]> {
-    if (!mongoose.isValidObjectId(propertyId)) return [];
-    const property = await PropertyModel.findById(propertyId).exec();
-    if (!property) return [];
-    if (
-      property.owner.toString() !== actor.id &&
-      actor.role !== 'admin'
-    ) {
-      throw new ForbiddenError('You can only view your own payments');
-    }
-    const docs = await PaymentModel.find({ property: property._id })
-      .sort({ createdAt: -1 })
       .exec();
     return docs.map(toPaymentDTO);
   },
