@@ -4,8 +4,9 @@ import type { EmailSettingsDoc } from './emailSettings.model';
 import type { EmailSettingsDTO } from './emailSettings.types';
 
 function mask(raw: string): MaskedSecretField {
-  return raw.length > 0
-    ? { configured: true, hint: maskSecret(raw) }
+  const normalized = raw.trim();
+  return normalized.length > 0
+    ? { configured: true, hint: maskSecret(normalized) }
     : { configured: false, hint: '' };
 }
 
@@ -20,13 +21,13 @@ function computeReady(doc: EmailSettingsDoc): boolean {
   if (doc.provider === 'console') return true;
   if (!doc.fromAddress) return false;
   if (doc.provider === 'resend') {
-    return decryptSecret(doc.resendApiKey).length > 0;
+    return decryptSecret(doc.resendApiKey).trim().length > 0;
   }
   if (doc.provider === 'smtp') {
     return (
       !!doc.smtp?.host &&
       !!doc.smtp?.user &&
-      decryptSecret(doc.smtp?.password ?? '').length > 0
+      decryptSecret(doc.smtp?.password ?? '').trim().length > 0
     );
   }
   return false;

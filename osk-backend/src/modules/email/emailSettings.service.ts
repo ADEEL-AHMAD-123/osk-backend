@@ -64,7 +64,7 @@ export const emailSettingsService = {
     }
     if (input.resend) {
       if (typeof input.resend.apiKey === 'string') {
-        update.resendApiKey = encryptSecret(input.resend.apiKey);
+        update.resendApiKey = encryptSecret(input.resend.apiKey.trim());
       }
     }
     if (input.smtp) {
@@ -73,7 +73,7 @@ export const emailSettingsService = {
       if (typeof input.smtp.secure === 'boolean') update['smtp.secure'] = input.smtp.secure;
       if (typeof input.smtp.user === 'string') update['smtp.user'] = input.smtp.user.trim();
       if (typeof input.smtp.password === 'string') {
-        update['smtp.password'] = encryptSecret(input.smtp.password);
+        update['smtp.password'] = encryptSecret(input.smtp.password.trim());
       }
     }
 
@@ -119,7 +119,7 @@ export const emailSettingsService = {
         process.env.EMAIL_FROM_NAME ||
         process.env.EMAIL_FROM ||
         'OSK',
-      resendApiKey: dbOrEnv(doc.resendApiKey ?? '', env.RESEND_API_KEY),
+      resendApiKey: dbOrEnv(doc.resendApiKey ?? '', env.RESEND_API_KEY).trim(),
       smtp: {
         host: doc.smtp?.host || process.env.SMTP_HOST || '',
         port: doc.smtp?.port || Number(process.env.SMTP_PORT ?? 587),
@@ -128,7 +128,7 @@ export const emailSettingsService = {
             ? doc.smtp.secure
             : (process.env.SMTP_SECURE ?? '').toLowerCase() === 'true',
         user: doc.smtp?.user || process.env.SMTP_USER || '',
-        password: dbOrEnv(doc.smtp?.password ?? '', process.env.SMTP_PASSWORD),
+        password: dbOrEnv(doc.smtp?.password ?? '', process.env.SMTP_PASSWORD).trim(),
       },
     };
   },
