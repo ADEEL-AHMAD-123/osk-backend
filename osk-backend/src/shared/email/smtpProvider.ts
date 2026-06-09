@@ -59,10 +59,36 @@ export function createSmtpProvider(deps: SmtpDeps): EmailProvider {
     socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
   });
 
+  const isGmailHost = /(^|\.)smtp\.gmail\.com$/i.test(deps.host.trim());
+  const smtpUserNormalized = deps.user.trim().toLowerCase();
+
+  const usesAuthenticatedMailbox = (from: string): boolean =>
+    from.toLowerCase().includes(smtpUserNormalized);
+
   return {
     async send(message: EmailMessage): Promise<void> {
-      const from = message.from ?? deps.defaultFrom;
+      const requestedFrom = message.from ?? deps.defaultFrom;
+      /* Gmail commonly rejects sends when the From mailbox differs from the
+       * authenticated SMTP user unless that alias is explicitly configured.
+       * To avoid false "SMTP failed" reports for valid credentials, force the
+       * authenticated mailbox for Gmail hosts when the sender doesn't match. */
+      const from =
+        isGmailHost && !usesAuthenticatedMailbox(requestedFrom)
+          ? deps.user
+          : requestedFrom;
       try {
+        if (from !== requestedFrom) {
+          logger.warn(
+            {
+              provider: 'smtp',
+              host: deps.host,
+              requestedFrom,
+              effectiveFrom: from,
+              smtpUser: deps.user,
+            },
+            'smtp sender adjusted to authenticated mailbox',
+          );
+        }
         logger.info(
           {
             provider: 'smtp',
