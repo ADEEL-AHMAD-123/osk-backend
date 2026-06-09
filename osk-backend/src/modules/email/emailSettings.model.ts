@@ -20,6 +20,16 @@ import { Schema, model, type Document, type Types } from 'mongoose';
 export const EMAIL_PROVIDER_KEYS = ['console', 'resend', 'smtp'] as const;
 export type EmailProviderKey = (typeof EMAIL_PROVIDER_KEYS)[number];
 
+export const EMAIL_TEMPLATE_KEYS = ['warm', 'clean', 'dark', 'brand'] as const;
+export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
+
+export const EMAIL_TEMPLATE_LABELS: Record<EmailTemplateKey, string> = {
+  warm: 'Warm (ivory background, earthy tones)',
+  clean: 'Clean (white, minimal borders)',
+  dark: 'Dark (night-mode style)',
+  brand: 'Brand (accent-colour header)',
+};
+
 export interface EmailSmtpBlock {
   host: string;
   port: number;
@@ -35,6 +45,8 @@ export interface EmailSettingsDoc extends Document {
   singletonKey: 'default';
   /** Which adapter `getEmailProvider()` returns at request time. */
   provider: EmailProviderKey;
+  /** Which HTML email template to use for transactional emails. */
+  activeTemplate: EmailTemplateKey;
   /** Default From address (e.g. "no-reply@yourdomain.com"). */
   fromAddress: string;
   /** Default From display name (e.g. "OSK"). */
@@ -70,6 +82,11 @@ const emailSettingsSchema = new Schema<EmailSettingsDoc>(
       type: String,
       enum: EMAIL_PROVIDER_KEYS,
       default: 'console',
+    },
+    activeTemplate: {
+      type: String,
+      enum: EMAIL_TEMPLATE_KEYS,
+      default: 'warm',
     },
     fromAddress: { type: String, default: '', trim: true, maxlength: 200 },
     fromName: { type: String, default: 'OSK', trim: true, maxlength: 80 },

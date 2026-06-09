@@ -1,8 +1,8 @@
-import type { EmailProviderKey } from './emailSettings.model';
+import type { EmailProviderKey, EmailTemplateKey } from './emailSettings.model';
 import type { MaskedSecretField } from '../pricing/pricing.types';
 
-export type { EmailProviderKey };
-export { EMAIL_PROVIDER_KEYS } from './emailSettings.model';
+export type { EmailProviderKey, EmailTemplateKey };
+export { EMAIL_PROVIDER_KEYS, EMAIL_TEMPLATE_KEYS, EMAIL_TEMPLATE_LABELS } from './emailSettings.model';
 
 /**
  * Admin-facing email-settings DTO. Secrets are never returned raw —
@@ -11,6 +11,7 @@ export { EMAIL_PROVIDER_KEYS } from './emailSettings.model';
  */
 export interface EmailSettingsDTO {
   provider: EmailProviderKey;
+  activeTemplate: EmailTemplateKey;
   fromAddress: string;
   fromName: string;
   resend: {

@@ -35,6 +35,7 @@ function computeReady(doc: EmailSettingsDoc): boolean {
 export function toEmailSettingsDTO(doc: EmailSettingsDoc): EmailSettingsDTO {
   return {
     provider: doc.provider,
+    activeTemplate: doc.activeTemplate ?? 'warm',
     fromAddress: doc.fromAddress,
     fromName: doc.fromName,
     resend: {

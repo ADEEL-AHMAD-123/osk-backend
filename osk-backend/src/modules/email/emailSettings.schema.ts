@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EMAIL_PROVIDER_KEYS } from './emailSettings.model';
+import { EMAIL_PROVIDER_KEYS, EMAIL_TEMPLATE_KEYS } from './emailSettings.model';
 
 const secretField = z.string().max(512).optional();
 
@@ -22,6 +22,7 @@ const smtpPatch = z
 /** PATCH /admin/email body. Every field optional — partial updates. */
 export const updateEmailSettingsSchema = z.object({
   provider: z.enum(EMAIL_PROVIDER_KEYS).optional(),
+  activeTemplate: z.enum(EMAIL_TEMPLATE_KEYS).optional(),
   fromAddress: z
     .string()
     .email()

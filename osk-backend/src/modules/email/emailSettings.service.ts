@@ -1,6 +1,7 @@
 import { decryptSecret, encryptSecret } from '../../shared/crypto/secrets';
 import { env } from '../../config/env';
 import { EmailSettingsModel } from './emailSettings.model';
+import type { EmailTemplateKey } from './emailSettings.model';
 import { toEmailSettingsDTO } from './emailSettings.mapper';
 import type { UpdateEmailSettingsInput } from './emailSettings.schema';
 import type { EmailSettingsDTO } from './emailSettings.types';
@@ -13,6 +14,7 @@ import type { EmailSettingsDTO } from './emailSettings.types';
  */
 export interface EmailProviderSecrets {
   provider: 'console' | 'resend' | 'smtp';
+  activeTemplate: EmailTemplateKey;
   fromAddress: string;
   fromName: string;
   resendApiKey: string;
@@ -53,6 +55,7 @@ export const emailSettingsService = {
   ): Promise<EmailSettingsDTO> {
     const update: Record<string, unknown> = {};
     if (typeof input.provider === 'string') update.provider = input.provider;
+    if (typeof input.activeTemplate === 'string') update.activeTemplate = input.activeTemplate;
     if (typeof input.fromAddress === 'string') {
       update.fromAddress = input.fromAddress.trim();
     }
@@ -108,6 +111,7 @@ export const emailSettingsService = {
 
     return {
       provider,
+      activeTemplate: (doc.activeTemplate ?? 'warm') as EmailTemplateKey,
       fromAddress:
         doc.fromAddress || process.env.EMAIL_FROM_ADDRESS || '',
       fromName:

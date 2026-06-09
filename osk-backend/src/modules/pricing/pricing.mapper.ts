@@ -31,16 +31,24 @@ function toMaskedField(encrypted: string): MaskedSecretField {
  *  - bank    → always considered configured (manual flow, no creds)
  */
 function computeProviderReady(stored: {
-  stripe: { secretKey: string };
-  paypal: { clientId: string; clientSecret: string; apiBase: string };
+  stripe: { secretKey: string; webhookSecret: string };
+  paypal: {
+    clientId: string;
+    clientSecret: string;
+    apiBase: string;
+    webhookId: string;
+  };
   paystack: { secretKey: string };
 }): Record<ProviderKey, boolean> {
   return {
-    stripe: stored.stripe.secretKey.length > 0,
+    stripe:
+      stored.stripe.secretKey.length > 0 &&
+      stored.stripe.webhookSecret.length > 0,
     paypal:
       stored.paypal.clientId.length > 0 &&
       stored.paypal.clientSecret.length > 0 &&
-      stored.paypal.apiBase.length > 0,
+      stored.paypal.apiBase.length > 0 &&
+      stored.paypal.webhookId.length > 0,
     paystack: stored.paystack.secretKey.length > 0,
     'bank-transfer': true,
   };
