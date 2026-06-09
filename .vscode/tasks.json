@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "dev-frontend-railway",
+			"type": "shell",
+			"command": "cd osk-frontend && npm run dev",
+			"isBackground": true,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "dev-frontend-local-3000",
+			"type": "shell",
+			"command": "cd osk-frontend && npm run dev",
+			"isBackground": true,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		}
+	]
+}

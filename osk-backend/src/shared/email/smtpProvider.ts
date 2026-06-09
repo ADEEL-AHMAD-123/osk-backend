@@ -122,6 +122,9 @@ export function createSmtpProvider(deps: SmtpDeps): EmailProvider {
         );
       } catch (err) {
         const smtpErr = err as SmtpErrorLike;
+        const reason =
+          smtpErr.response ??
+          (err instanceof Error ? err.message : 'Unknown SMTP error');
         logger.error(
           {
             err,
@@ -129,14 +132,12 @@ export function createSmtpProvider(deps: SmtpDeps): EmailProvider {
             to: message.to,
             subject: message.subject,
             delivered: false,
-            reason:
-              smtpErr.response ??
-              (err instanceof Error ? err.message : 'Unknown SMTP error'),
+            reason,
             code: smtpErr.code,
             command: smtpErr.command,
             responseCode: smtpErr.responseCode,
           },
-          'email delivery failed',
+          `email delivery failed: ${reason}`,
         );
         throw err;
       }
