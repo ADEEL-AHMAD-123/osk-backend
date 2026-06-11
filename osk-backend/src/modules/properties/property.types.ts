@@ -73,6 +73,11 @@ export interface PropertyDTO {
   yearBuilt?: number;
   ownerId: string;
   agentId?: string;
+  /** Free-text rejection reason. Empty when the listing was never
+   *  rejected. */
+  rejectionReason?: string;
+  /** ISO timestamp of the most recent rejection. */
+  rejectedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

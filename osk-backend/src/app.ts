@@ -12,6 +12,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { requestId } from './shared/middleware/requestId';
 import { errorHandler, notFound } from './shared/middleware/errorHandler';
+import { corsOriginResolver } from './shared/cors/originPolicy';
 import swaggerUi from 'swagger-ui-express';
 import { registerModules } from './modules';
 import { openApiSpec } from './openapi/spec';
@@ -67,25 +68,14 @@ export function createApp(): Express {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
-  /* CORS — accept a comma-separated allowlist so prod, preview deploys
-   * and localhost can all be configured from a single env. `null` means
-   * server-to-server callers (no Origin header) are always allowed. */
-  const allowedOrigins = env.CORS_ORIGIN.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  /* CORS — reflect any browser-supplied Origin so new frontends work
+   * without env edits. The security model relies on Bearer auth:
+   * malicious sites can make the call but can't forge the Authorization
+   * header. See `shared/cors/originPolicy.ts` for the details and the
+   * optional CORS_BLOCKLIST escape hatch. */
   app.use(
     cors({
-      origin(origin, cb) {
-        if (!origin) {
-          cb(null, true);
-          return;
-        }
-        if (allowedOrigins.includes(origin)) {
-          cb(null, true);
-          return;
-        }
-        cb(new Error(`Origin ${origin} not allowed by CORS`));
-      },
+      origin: corsOriginResolver,
       credentials: true,
     }),
   );

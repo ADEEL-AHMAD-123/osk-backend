@@ -3,6 +3,7 @@ import { asyncHandler } from '../../shared/asyncHandler';
 import { authenticate, authorize } from '../../shared/middleware/auth';
 import {
   getEmailSettings,
+  previewEmail,
   sendTestEmail,
   updateEmailSettings,
 } from './email.controller';
@@ -30,4 +31,10 @@ emailRoutes.post(
   authenticate,
   authorize('admin'),
   asyncHandler(sendTestEmail),
+);
+emailRoutes.get(
+  '/preview',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(previewEmail),
 );

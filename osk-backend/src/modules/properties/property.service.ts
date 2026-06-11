@@ -7,6 +7,12 @@ import {
 import type { AuthUser } from '../../shared/middleware/auth';
 import { settingsService } from '../settings/settings.service';
 import { subscriptionService } from '../subscriptions/subscription.service';
+import { UserModel } from '../auth/user.model';
+import {
+  sendPropertyApprovedEmail,
+  sendPropertyRejectedEmail,
+} from '../../shared/email/notificationEmails';
+import { logger } from '../../config/logger';
 import { propertyRepository, type OwnerAnalytics } from './property.repository';
 import { toPropertyDTO } from './property.mapper';
 import type { PropertyDoc } from './property.model';
@@ -265,10 +271,18 @@ export const propertyService = {
    * `reject` sends it back to `rejected`. The seller's right to
    * publish is gated at submission time by their subscription plan
    * (see `create`), so there's no per-listing payment step here.
+   *
+   * The optional `reason` is required UX-wise on reject (the admin
+   * panel enforces it), but stored as a free-text field so legacy
+   * rejections without one keep loading. On approve we clear any
+   * prior rejection metadata so the seller's dashboard doesn't keep
+   * showing a stale "rejected because…" note next to a now-live
+   * listing.
    */
   async review(
     id: string,
     decision: 'approve' | 'reject',
+    opts: { reason?: string } = {},
   ): Promise<PropertyDTO> {
     const doc = await propertyRepository.findById(id);
     if (!doc) throw new NotFoundError('Property not found');
@@ -277,8 +291,47 @@ export const propertyService = {
         'Only listings pending review can be approved or rejected',
       );
     }
-    doc.status = decision === 'reject' ? 'rejected' : 'published';
+    if (decision === 'reject') {
+      doc.status = 'rejected';
+      doc.rejectionReason = (opts.reason ?? '').trim();
+      doc.rejectedAt = new Date();
+    } else {
+      doc.status = 'published';
+      /* Clear stale rejection metadata so the dashboard doesn't show
+       * a misleading "rejected" note next to a now-published row. */
+      doc.rejectionReason = '';
+      doc.rejectedAt = undefined;
+    }
     await doc.save();
+
+    /* Notify the owner — fire-and-forget. Approved gets the "live
+     * now" email, rejected gets the reason in a styled block so the
+     * seller knows what to fix before resubmitting. */
+    void (async () => {
+      try {
+        const owner = await UserModel.findById(doc.owner).exec();
+        if (!owner) return;
+        if (decision === 'approve') {
+          await sendPropertyApprovedEmail({
+            to: owner.email,
+            name: owner.name,
+            propertyTitle: doc.title,
+            propertySlug: doc.slug,
+          });
+        } else {
+          await sendPropertyRejectedEmail({
+            to: owner.email,
+            name: owner.name,
+            propertyTitle: doc.title,
+            propertySlug: doc.slug,
+            reason: doc.rejectionReason ?? '',
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, decision }, 'property review email skipped');
+      }
+    })();
+
     return toPropertyDTO(doc);
   },
 };

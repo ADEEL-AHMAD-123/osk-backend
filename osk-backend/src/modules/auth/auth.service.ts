@@ -9,6 +9,7 @@ import { logger } from '../../config/logger';
 import { isProd } from '../../config/env';
 import { authRepository } from './auth.repository';
 import { sendPasswordResetEmail, sendVerifyEmail } from './auth.emails';
+import { sendWelcomeEmail } from '../../shared/email/notificationEmails';
 import {
   createOpaqueToken,
   createRefreshToken,
@@ -103,6 +104,10 @@ export const authService = {
       name: user.name,
       token: verify.token,
     });
+    /* Welcome on top of the verify link — they're conceptually separate
+     * (verify proves email ownership, welcome introduces the product),
+     * so they're sent as two messages rather than merged. */
+    void sendWelcomeEmail({ to: user.email, name: user.name });
     logger.info(
       { email: user.email, verifyToken: isProd ? undefined : verify.token },
       'email verification token issued',

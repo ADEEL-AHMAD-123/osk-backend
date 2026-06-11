@@ -45,6 +45,8 @@ export function toPropertyDTO(doc: PropertyDoc): PropertyDTO {
     yearBuilt: doc.yearBuilt,
     ownerId: doc.owner.toString(),
     agentId: doc.agent?.toString(),
+    rejectionReason: doc.rejectionReason || undefined,
+    rejectedAt: doc.rejectedAt?.toISOString(),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };

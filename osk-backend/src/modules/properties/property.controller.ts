@@ -98,9 +98,14 @@ export const approveProperty: RequestHandler = async (req, res) => {
   sendSuccess(res, await propertyService.review(req.params.id ?? '', 'approve'));
 };
 
-/** POST /properties/:id/reject — admin moderation. */
+/** POST /properties/:id/reject — admin moderation. Body: `{ reason }`. */
 export const rejectProperty: RequestHandler = async (req, res) => {
-  sendSuccess(res, await propertyService.review(req.params.id ?? '', 'reject'));
+  const body = (req.body ?? {}) as { reason?: unknown };
+  const reason = typeof body.reason === 'string' ? body.reason : '';
+  sendSuccess(
+    res,
+    await propertyService.review(req.params.id ?? '', 'reject', { reason }),
+  );
 };
 
 /**

@@ -8,6 +8,12 @@ import {
   providerSupportsCurrency,
 } from '../payments/billing-currencies';
 import type { ProviderKey } from '../payments/payment.types';
+import { UserModel } from '../auth/user.model';
+import {
+  sendSubscriptionActivatedEmail,
+  sendSubscriptionCancelledEmail,
+} from '../../shared/email/notificationEmails';
+import { logger } from '../../config/logger';
 import { SubscriptionModel, type SubscriptionDoc } from './subscription.model';
 import { toSubscriptionDTO } from './subscription.mapper';
 import type { SubscriptionPlanDoc } from './subscriptionPlan.model';
@@ -274,6 +280,25 @@ export const subscriptionService = {
     doc.payment = new mongoose.Types.ObjectId(paymentId);
     doc.cancelledAt = null;
     await doc.save();
+
+    /* Confirmation email — fire-and-forget. Look up the seller's
+     * email/name; if the user has been deleted (rare race), just
+     * skip the send. */
+    void (async () => {
+      try {
+        const user = await UserModel.findById(doc.user).exec();
+        if (!user) return;
+        await sendSubscriptionActivatedEmail({
+          to: user.email,
+          name: user.name,
+          planName: plan?.name ?? doc.planSlug,
+          periodEnd: doc.currentPeriodEnd,
+        });
+      } catch (err) {
+        logger.warn({ err }, 'subscription activation email skipped');
+      }
+    })();
+
     return doc;
   },
 
@@ -288,6 +313,27 @@ export const subscriptionService = {
     doc.status = 'cancelled';
     doc.cancelledAt = new Date();
     await doc.save();
+
+    /* Cancellation acknowledgement email. Surfaces the access-until
+     * date so the seller knows their grace period. */
+    void (async () => {
+      try {
+        const [user, plan] = await Promise.all([
+          UserModel.findById(doc.user).exec(),
+          subscriptionPlanService.getById(doc.plan.toString()),
+        ]);
+        if (!user) return;
+        await sendSubscriptionCancelledEmail({
+          to: user.email,
+          name: user.name,
+          planName: plan?.name ?? doc.planSlug,
+          periodEnd: doc.currentPeriodEnd,
+        });
+      } catch (err) {
+        logger.warn({ err }, 'subscription cancel email skipped');
+      }
+    })();
+
     return doc;
   },
 };

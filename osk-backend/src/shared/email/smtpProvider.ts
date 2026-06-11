@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { logger } from '../../config/logger';
+import { diagnoseSmtpError } from './smtpDiagnose';
 import type { EmailMessage, EmailProvider } from './EmailProvider';
 
 interface SmtpErrorLike {
@@ -7,6 +8,25 @@ interface SmtpErrorLike {
   command?: string;
   response?: string;
   responseCode?: number;
+}
+
+/**
+ * Error class enriched with a human-readable diagnosis and remediation
+ * hints. The admin controller catches this and surfaces both on the
+ * test-send response so the operator can act without trawling logs.
+ */
+export class SmtpDeliveryError extends Error {
+  readonly reason: string;
+  readonly hints: string[];
+  override readonly cause?: unknown;
+
+  constructor(reason: string, hints: string[], cause?: unknown) {
+    super(reason);
+    this.name = 'SmtpDeliveryError';
+    this.reason = reason;
+    this.hints = hints;
+    this.cause = cause;
+  }
 }
 
 /**
@@ -122,9 +142,12 @@ export function createSmtpProvider(deps: SmtpDeps): EmailProvider {
         );
       } catch (err) {
         const smtpErr = err as SmtpErrorLike;
-        const reason =
-          smtpErr.response ??
-          (err instanceof Error ? err.message : 'Unknown SMTP error');
+        const diag = diagnoseSmtpError(err, {
+          host: deps.host,
+          port: deps.port,
+          secure: deps.secure,
+          user: deps.user,
+        });
         logger.error(
           {
             err,
@@ -132,14 +155,19 @@ export function createSmtpProvider(deps: SmtpDeps): EmailProvider {
             to: message.to,
             subject: message.subject,
             delivered: false,
-            reason,
+            reason: diag.reason,
+            hints: diag.hints,
             code: smtpErr.code,
             command: smtpErr.command,
             responseCode: smtpErr.responseCode,
+            rawResponse: smtpErr.response,
           },
-          `email delivery failed: ${reason}`,
+          `email delivery failed: ${diag.reason}`,
         );
-        throw err;
+        /* Throw an enriched error so the admin controller can surface
+         * the decoded reason + remediation hints on the response,
+         * not a generic "Internal server error". */
+        throw new SmtpDeliveryError(diag.reason, diag.hints, err);
       }
     },
   };

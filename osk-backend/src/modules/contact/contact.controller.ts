@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { sendSuccess } from '../../shared/response';
 import { ValidationError } from '../../shared/errors';
 import { logger } from '../../config/logger';
-import { env } from '../../config/env';
+import { preferredFrontendOrigin } from '../../shared/cors/originPolicy';
 import { propertyService } from '../properties/property.service';
 import { inquiryService } from '../inquiries/inquiry.service';
 import { toInquiryDTO } from '../inquiries/inquiry.mapper';
@@ -26,7 +26,10 @@ const callIntentSchema = z.object({
 });
 
 function primaryAppOrigin(): string {
-  return env.CORS_ORIGIN.split(',')[0]?.trim() || 'http://localhost:3000';
+  /* `CORS_ORIGIN` is now informational only — its first entry doubles
+   * as "the canonical frontend origin for outbound links". The CORS
+   * middleware itself reflects any browser origin (see originPolicy). */
+  return preferredFrontendOrigin();
 }
 
 /** POST /contact/inquiry — email channel (secure relay, persisted). */

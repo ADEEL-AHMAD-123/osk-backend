@@ -7,6 +7,7 @@ import {
 import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 import type { AuthUser } from '../../shared/middleware/auth';
+import { resolveCheckoutBaseFromOrigin } from '../../shared/cors/originPolicy';
 import { pricingService } from '../pricing/pricing.service';
 import { subscriptionService } from '../subscriptions/subscription.service';
 import { providerSupportsCurrency } from './billing-currencies';
@@ -38,7 +39,10 @@ function providerIntentErrorMessage(err: unknown): string {
 
 /**
  * Resolve which frontend origin should receive provider success/cancel
- * redirects. We only trust origins explicitly listed in CORS_ORIGIN.
+ * redirects. Trusts the request's own Origin (so a checkout fired
+ * from your-app-v2.com redirects back to that same host), falls back
+ * to `PUBLIC_APP_URL`, and finally to the preferred CORS origin.
+ * Blocklist still applies — origins in CORS_BLOCKLIST are refused.
  */
 function resolveCheckoutBaseUrl(requestOrigin?: string): string {
   const fallback = env.PUBLIC_APP_URL.replace(/\/$/, '');
@@ -51,10 +55,9 @@ function resolveCheckoutBaseUrl(requestOrigin?: string): string {
     return fallback;
   }
 
-  const allowed = env.CORS_ORIGIN.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return allowed.includes(normalized) ? normalized : fallback;
+  /* Origin policy is identical to the API CORS — reflect everything
+   * not on the blocklist. */
+  return resolveCheckoutBaseFromOrigin(normalized) || fallback;
 }
 
 /**

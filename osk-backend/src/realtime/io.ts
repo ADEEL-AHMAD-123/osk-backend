@@ -3,6 +3,7 @@ import { Server as SocketServer, type Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { corsOriginPredicate } from '../shared/cors/originPolicy';
 
 /**
  * Real-time fan-out for thread messages.
@@ -29,18 +30,26 @@ declare module 'socket.io' {
 
 let io: SocketServer | null = null;
 
-function allowedOrigins(): string[] {
-  return env.CORS_ORIGIN.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 export function initSocket(httpServer: HttpServer): SocketServer {
   if (io) return io;
 
   io = new SocketServer(httpServer, {
     path: '/socket.io',
-    cors: { origin: allowedOrigins(), credentials: true },
+    /* Mirror the HTTP CORS policy — reflect any browser origin that
+     * isn't in CORS_BLOCKLIST. Socket.IO takes a function returning
+     * the resolved origin; we hand back the request's own origin
+     * verbatim so the upgrade response carries the correct
+     * Access-Control-Allow-Origin value. */
+    cors: {
+      origin: (origin, cb) => {
+        if (corsOriginPredicate(origin)) {
+          cb(null, origin ?? true);
+        } else {
+          cb(new Error(`Origin ${origin} blocked by CORS_BLOCKLIST`));
+        }
+      },
+      credentials: true,
+    },
   });
 
   io.use((socket: Socket, next) => {

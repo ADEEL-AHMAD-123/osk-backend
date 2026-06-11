@@ -80,6 +80,35 @@ export interface SiteSettingsLegal {
   termsUpdatedAt: string;
 }
 
+/**
+ * CORS allowlist editable from the admin dashboard.
+ *
+ *  - `allowedOrigins`: each entry is either an exact origin
+ *    ("https://app.osk.dev") or a wildcard pattern with `*` matching
+ *    a single hostname segment ("https://*.vercel.app",
+ *    "https://*.osk.dev"). The matcher treats `*` as `[a-zA-Z0-9-]+`
+ *    so `https://*.vercel.app` matches `https://osk-frontend-abc.vercel.app`
+ *    but NOT `https://attacker.example/vercel.app/foo`.
+ *  - `allowAll`: emergency switch. When true, the CORS middleware
+ *    echoes back any Origin header. Use sparingly — it makes the API
+ *    addressable from any domain (which is what some operators want
+ *    for preview deploys but is unsafe for credentialed auth flows in
+ *    untrusted environments).
+ *  - `allowSubdomainsOf`: optional convenience list. Each entry is a
+ *    bare domain ("osk.dev"); the matcher treats it as both the
+ *    apex origin (https + http) AND any single-level subdomain. Lets
+ *    the admin write "osk.dev" and stop worrying about preview URLs.
+ *
+ * The CORS middleware reads this through a 30s in-memory cache so the
+ * per-request check stays cheap; the cache is invalidated on every
+ * PATCH /admin/settings.
+ */
+export interface SiteSettingsCors {
+  allowedOrigins: string[];
+  allowSubdomainsOf: string[];
+  allowAll: boolean;
+}
+
 export interface SiteSettingsDoc extends Document {
   _id: Types.ObjectId;
   /** Marker so we can singleton-enforce via a unique index. */
@@ -94,6 +123,7 @@ export interface SiteSettingsDoc extends Document {
   geo: SiteSettingsGeo;
   homeStats: SiteSettingsStat[];
   legal: SiteSettingsLegal;
+  cors: SiteSettingsCors;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -152,6 +182,15 @@ const legalSchema = new Schema<SiteSettingsLegal>(
     termsMarkdown: { type: String, default: '' },
     privacyUpdatedAt: { type: String, default: '' },
     termsUpdatedAt: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const corsSchema = new Schema<SiteSettingsCors>(
+  {
+    allowedOrigins: { type: [String], default: [] },
+    allowSubdomainsOf: { type: [String], default: [] },
+    allowAll: { type: Boolean, default: false },
   },
   { _id: false },
 );

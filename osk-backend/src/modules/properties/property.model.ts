@@ -45,6 +45,14 @@ export interface PropertyDoc extends Document {
   agent?: Types.ObjectId;
   /** Total public detail-page views — incremented via /properties/:id/view. */
   viewCount: number;
+  /** Free-text reason captured when admin rejects the listing — shown
+   *  in the seller's dashboard and embedded in the rejection email so
+   *  the seller knows what to fix before resubmitting. Cleared when
+   *  the listing is approved or resubmitted. */
+  rejectionReason?: string;
+  /** ISO timestamp of the most recent rejection. Helps the seller
+   *  dashboard render "Rejected on {date}". */
+  rejectedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,6 +113,8 @@ const propertySchema = new Schema<PropertyDoc>(
     owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     agent: { type: Schema.Types.ObjectId, ref: 'User' },
     viewCount: { type: Number, default: 0, min: 0 },
+    rejectionReason: { type: String, default: '', maxlength: 1000 },
+    rejectedAt: { type: Date },
   },
   { timestamps: true },
 );

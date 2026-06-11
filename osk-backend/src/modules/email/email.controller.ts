@@ -1,8 +1,19 @@
 import type { RequestHandler } from 'express';
-import { ConflictError, UnauthorizedError, ValidationError } from '../../shared/errors';
+import {
+  ConflictError,
+  UnauthorizedError,
+  ValidationError,
+} from '../../shared/errors';
 import { sendSuccess } from '../../shared/response';
 import { logger } from '../../config/logger';
 import { getEmailProvider } from '../../shared/email/EmailProvider';
+import { SmtpDeliveryError } from '../../shared/email/smtpProvider';
+import { renderEmailPreview } from '../../shared/email/emailPreviews';
+import {
+  PREVIEWABLE_EMAIL_TYPES,
+  type PreviewableEmailType,
+} from '../../shared/email/notificationEmails';
+import { EMAIL_TEMPLATE_KEYS, type EmailTemplateKey } from './emailSettings.model';
 import { emailSettingsService } from './emailSettings.service';
 import {
   sendTestEmailSchema,
@@ -23,8 +34,9 @@ export const updateEmailSettings: RequestHandler = async (req, res) => {
 
 /**
  * Send a one-shot test email using whatever provider is currently
- * configured. Admin can pass any recipient; defaults to their own
- * authed email when the body is empty.
+ * configured. On failure the response includes a decoded reason +
+ * remediation hints so the admin can fix the config without trawling
+ * logs.
  */
 export const sendTestEmail: RequestHandler = async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
@@ -66,9 +78,55 @@ export const sendTestEmail: RequestHandler = async (req, res) => {
     );
     sendSuccess(res, { sent: true, to: parsed.data.to });
   } catch (err) {
-    /* Surface a useful reason rather than a generic 500 — the admin
-     * pasted the wrong key, hit a Resend rate limit, etc. */
+    /* SmtpDeliveryError carries pre-decoded `reason` + `hints` so the
+     * UI can render a useful card instead of guessing from the raw
+     * provider message. Other providers (Resend) fall back to a
+     * single-line reason. */
+    if (err instanceof SmtpDeliveryError) {
+      const conflict = new ConflictError(err.reason);
+      /* Stash hints on the error details slot — the central error
+       * handler echoes `details` back to the client. */
+      (conflict as unknown as { details: unknown }).details = [
+        { field: 'hints', message: err.hints.join('\n') },
+        ...err.hints.map((h) => ({ field: 'hint', message: h })),
+      ];
+      throw conflict;
+    }
     const reason = err instanceof Error ? err.message : 'Unknown error';
     throw new ConflictError(`Test send failed: ${reason}`);
   }
+};
+
+/**
+ * Render a sample email for the admin preview pane.
+ * Query string: `?template=warm&type=welcome`. Both default to the
+ * admin's currently saved template and the welcome email when absent.
+ *
+ * Returns `{ subject, html, text }` so the frontend can render the
+ * HTML inside a sandboxed iframe and show the subject line above it.
+ */
+export const previewEmail: RequestHandler = async (req, res) => {
+  const requestedTemplate =
+    typeof req.query.template === 'string' ? req.query.template : '';
+  const requestedType =
+    typeof req.query.type === 'string' ? req.query.type : 'welcome';
+  const settings = await emailSettingsService.getSettings();
+
+  const template: EmailTemplateKey = (
+    EMAIL_TEMPLATE_KEYS as readonly string[]
+  ).includes(requestedTemplate)
+    ? (requestedTemplate as EmailTemplateKey)
+    : settings.activeTemplate;
+
+  const type: PreviewableEmailType = (
+    PREVIEWABLE_EMAIL_TYPES as readonly string[]
+  ).includes(requestedType)
+    ? (requestedType as PreviewableEmailType)
+    : 'welcome';
+
+  sendSuccess(res, {
+    template,
+    type,
+    ...renderEmailPreview(template, type),
+  });
 };
