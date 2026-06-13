@@ -1,16 +1,34 @@
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { sendSuccess } from '../../shared/response';
-import { ValidationError } from '../../shared/errors';
+import { ForbiddenError, ValidationError } from '../../shared/errors';
 import { logger } from '../../config/logger';
 import { preferredFrontendOrigin } from '../../shared/cors/originPolicy';
 import { propertyService } from '../properties/property.service';
 import { inquiryService } from '../inquiries/inquiry.service';
 import { toInquiryDTO } from '../inquiries/inquiry.mapper';
+import { captchaService } from '../captcha/captcha.service';
 import {
   callbackSchema,
   inquirySchema,
 } from '../inquiries/inquiry.schema';
+
+function clientIp(req: import('express').Request): string | null {
+  const fwd = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim();
+  return fwd || req.ip || null;
+}
+
+async function assertCaptcha(
+  token: string,
+  req: import('express').Request,
+): Promise<void> {
+  const ok = await captchaService.verifyToken(token, clientIp(req));
+  if (!ok) {
+    throw new ForbiddenError(
+      'We couldn’t verify the captcha. Please refresh the challenge and try again.',
+    );
+  }
+}
 
 /**
  * Contact-channels module — call / WhatsApp / email.
@@ -36,6 +54,7 @@ function primaryAppOrigin(): string {
 export const submitInquiry: RequestHandler = async (req, res) => {
   const parsed = inquirySchema.safeParse(req.body);
   if (!parsed.success) throw new ValidationError(parsed.error.issues);
+  await assertCaptcha(parsed.data.captchaToken, req);
 
   const inquiry = await inquiryService.createEmailInquiry(parsed.data, {
     ip: req.ip,
@@ -63,6 +82,7 @@ export const logCallIntent: RequestHandler = (req, res) => {
 export const requestCallback: RequestHandler = async (req, res) => {
   const parsed = callbackSchema.safeParse(req.body);
   if (!parsed.success) throw new ValidationError(parsed.error.issues);
+  await assertCaptcha(parsed.data.captchaToken, req);
 
   const inquiry = await inquiryService.createCallbackRequest(parsed.data, {
     ip: req.ip,

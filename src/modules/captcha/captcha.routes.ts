@@ -3,6 +3,7 @@ import { asyncHandler } from '../../shared/asyncHandler';
 import { authenticate, authorize } from '../../shared/middleware/auth';
 import {
   getCaptchaSettings,
+  getChallenge,
   getPublicConfig,
   updateCaptchaSettings,
 } from './captcha.controller';
@@ -14,6 +15,7 @@ import {
  */
 export const captchaPublicRoutes = Router();
 captchaPublicRoutes.get('/config', asyncHandler(getPublicConfig));
+captchaPublicRoutes.get('/challenge', asyncHandler(getChallenge));
 
 export const captchaAdminRoutes = Router();
 captchaAdminRoutes.get(

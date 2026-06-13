@@ -7,6 +7,7 @@ export { CAPTCHA_PROVIDER_KEYS } from './captchaSettings.model';
 export const CAPTCHA_PROVIDER_LABELS: Record<CaptchaProviderKey, string> = {
   none: 'None (disabled)',
   turnstile: 'Cloudflare Turnstile',
+  local: 'Built-in text captcha',
 };
 
 /**

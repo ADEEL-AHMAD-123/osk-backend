@@ -20,7 +20,16 @@ import { Schema, model, type Document, type Types } from 'mongoose';
  *  read access to the DB still can't reuse the token.
  */
 
-export const CAPTCHA_PROVIDER_KEYS = ['none', 'turnstile'] as const;
+/**
+ *  - `provider: 'local'`    → built-in text captcha. Backend generates
+ *                             a short distorted-text SVG + an HMAC-signed
+ *                             token; the user types what they see and
+ *                             we verify the answer against the token.
+ *                             No third-party calls, no keys to manage.
+ *                             Weaker than Turnstile against OCR-equipped
+ *                             bots, but zero configuration.
+ */
+export const CAPTCHA_PROVIDER_KEYS = ['none', 'turnstile', 'local'] as const;
 export type CaptchaProviderKey = (typeof CAPTCHA_PROVIDER_KEYS)[number];
 
 export interface CaptchaSettingsDoc extends Document {

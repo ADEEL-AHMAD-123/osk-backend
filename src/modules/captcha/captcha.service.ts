@@ -2,11 +2,22 @@ import { decryptSecret, encryptSecret } from '../../shared/crypto/secrets';
 import { logger } from '../../config/logger';
 import { CaptchaSettingsModel } from './captchaSettings.model';
 import { toCaptchaSettingsDTO } from './captchaSettings.mapper';
+import {
+  generateLocalChallenge,
+  verifyLocalAnswer,
+} from './localCaptcha';
 import type { UpdateCaptchaSettingsInput } from './captchaSettings.schema';
 import type {
   CaptchaPublicConfig,
   CaptchaSettingsDTO,
 } from './captchaSettings.types';
+
+export interface CaptchaChallenge {
+  /** Opaque HMAC-signed payload. Submitted back as `<token>|<answer>`. */
+  token: string;
+  /** Inline SVG markup the frontend can drop into the DOM. */
+  svg: string;
+}
 
 /* ─────────────────────────────────────────────────────────────────────
  * Captcha service.
@@ -49,8 +60,21 @@ export const captchaService = {
     return {
       provider: dto.provider,
       siteKey: dto.siteKey,
-      enabled: dto.ready,
+      /* `local` doesn't need any admin-pasted keys to be enabled —
+       *  the server signs the challenge itself with OSK_SECRETS_KEY.
+       *  So unlike Turnstile, `ready` is just "provider !== 'none'". */
+      enabled: dto.provider === 'local' ? true : dto.ready,
     };
+  },
+
+  /** Issue a fresh local-captcha challenge. Returns `null` if the
+   *  current provider isn't `local` so the route layer can 404. */
+  async getChallenge(): Promise<CaptchaChallenge | null> {
+    const doc = await CaptchaSettingsModel.findOne({
+      singletonKey: 'default',
+    }).exec();
+    if (!doc || doc.provider !== 'local') return null;
+    return generateLocalChallenge();
   },
 
   async updateSettings(
@@ -89,6 +113,13 @@ export const captchaService = {
       singletonKey: 'default',
     }).exec();
     if (!doc || doc.provider === 'none') return true;
+
+    /* Built-in text captcha — frontend sends "<token>|<answer>" as
+     * the same `captchaToken` field. No outbound request, just an
+     * HMAC + expiry check. */
+    if (doc.provider === 'local') {
+      return verifyLocalAnswer(token);
+    }
 
     if (doc.provider !== 'turnstile') return true;
 
