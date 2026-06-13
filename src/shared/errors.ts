@@ -77,8 +77,14 @@ export class UnauthorizedError extends AppError {
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = 'You do not have access to this resource') {
-    super(403, 'FORBIDDEN', message);
+  constructor(
+    message = 'You do not have access to this resource',
+    /** Optional override for the response envelope's `code` field, used
+     *  when the frontend needs to branch on the reason (e.g.
+     *  `EMAIL_NOT_VERIFIED` triggers a "resend verify link" panel). */
+    code = 'FORBIDDEN',
+  ) {
+    super(403, code, message);
   }
 }
 

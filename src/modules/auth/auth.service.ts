@@ -146,6 +146,31 @@ export const authService = {
     if (user.status === 'blocked') {
       throw new ForbiddenError('This account has been suspended');
     }
+    /* Email-verification gate. We refuse to issue a session until the
+     * user has clicked the link we sent at signup. Re-send a fresh
+     * link on every blocked login so they always have a working one
+     * in their inbox — but rate-limited at the controller layer. */
+    if (!user.emailVerified) {
+      const verify = createOpaqueToken();
+      user.emailVerifyTokenHash = verify.hash;
+      if (ctx.origin && user.lastOrigin !== ctx.origin) {
+        user.lastOrigin = ctx.origin;
+      }
+      await user.save();
+      void sendVerifyEmail({
+        to: user.email,
+        name: user.name,
+        token: verify.token,
+        requestOrigin: ctx.origin,
+        userOrigin: user.lastOrigin,
+      });
+      /* Custom code so the frontend can render a "Check your inbox"
+       * panel with a Resend button instead of the generic banner. */
+      throw new ForbiddenError(
+        'Please verify your email — we just sent a fresh link to your inbox.',
+        'EMAIL_NOT_VERIFIED',
+      );
+    }
     /* Refresh the stored lastOrigin every login so background-flow
      * emails always point to wherever the user most recently signed
      * in. Skip if origin didn't change to avoid wasted writes. */
@@ -244,9 +269,49 @@ export const authService = {
     user.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     user.passwordResetTokenHash = undefined;
     user.passwordResetExpires = undefined;
+    /* Clicking a reset link that landed in this inbox proves the user
+     * controls the address — equivalent to clicking a verify link. So
+     * we mark them verified here too. Otherwise a user who signed up,
+     * forgot the password, and reset it would still be locked out of
+     * login by the email-verification gate. */
+    if (!user.emailVerified) {
+      user.emailVerified = true;
+      user.emailVerifyTokenHash = undefined;
+    }
     await user.save();
     // Revoke every existing session — the password just changed.
     await authRepository.revokeAllForUser(user._id as Types.ObjectId);
+  },
+
+  /**
+   * Public version of resendVerification — keyed by email, so an
+   * unauthenticated user blocked at login by EMAIL_NOT_VERIFIED can
+   * request a fresh link. Always resolves (no enumeration); the
+   * controller rate-limits the endpoint.
+   */
+  async resendVerificationPublic(
+    email: string,
+    ctx: { origin?: string | null } = {},
+  ): Promise<void> {
+    const user = await authRepository.findUserByEmail(email);
+    if (!user || user.emailVerified) return;
+    const verify = createOpaqueToken();
+    user.emailVerifyTokenHash = verify.hash;
+    if (ctx.origin && user.lastOrigin !== ctx.origin) {
+      user.lastOrigin = ctx.origin;
+    }
+    await user.save();
+    void sendVerifyEmail({
+      to: user.email,
+      name: user.name,
+      token: verify.token,
+      requestOrigin: ctx.origin,
+      userOrigin: user.lastOrigin,
+    });
+    logger.info(
+      { email: user.email, verifyToken: isProd ? undefined : verify.token },
+      'public email verification token issued',
+    );
   },
 
   /**

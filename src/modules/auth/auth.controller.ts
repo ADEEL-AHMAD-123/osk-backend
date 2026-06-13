@@ -129,6 +129,19 @@ export const forgotPassword: RequestHandler = async (req, res) => {
   sendSuccess(res, { sent: true });
 };
 
+/** POST /auth/resend-verification-public — unauthenticated counterpart
+ *  to the authed `resendVerification` endpoint. Used when a user gets
+ *  bounced at login with EMAIL_NOT_VERIFIED and wants a fresh link
+ *  without needing a session first. Reuses the forgot-password schema
+ *  (just an email field). Always resolves to avoid enumeration. */
+export const resendVerificationPublic: RequestHandler = async (req, res) => {
+  const { email } = forgotPasswordSchema.parse(req.body);
+  await authService.resendVerificationPublic(email, {
+    origin: req.headers.origin ?? null,
+  });
+  sendSuccess(res, { sent: true });
+};
+
 /** POST /auth/reset-password */
 export const resetPassword: RequestHandler = async (req, res) => {
   const { token, password } = resetPasswordSchema.parse(req.body);

@@ -10,6 +10,7 @@ import {
   refresh,
   register,
   resendVerification,
+  resendVerificationPublic,
   resetPassword,
   session,
   verifyEmail,
@@ -53,4 +54,12 @@ authRoutes.post(
   authLimiter,
   authenticate,
   asyncHandler(resendVerification),
+);
+/* Public counterpart — used after a login bounce on EMAIL_NOT_VERIFIED.
+ * No auth required, but rate-limited so it can't be abused as a mail
+ * relay. */
+authRoutes.post(
+  '/resend-verification-public',
+  authLimiter,
+  asyncHandler(resendVerificationPublic),
 );
