@@ -23,6 +23,12 @@ export interface UserDoc extends Document {
   country?: string;
   companyName?: string;
   companyRegistration?: string;
+  /** Most recent browser Origin we've seen this user act from
+   *  ("https://example.com"). Stamped on login + register and used
+   *  as the base URL for any transactional email link fired by a
+   *  background flow (subscription webhook activation, etc.) where
+   *  no live request is available. */
+  lastOrigin?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +67,7 @@ const userSchema = new Schema<UserDoc>(
     country: { type: String, trim: true, maxlength: 80 },
     companyName: { type: String, trim: true, maxlength: 120 },
     companyRegistration: { type: String, trim: true, maxlength: 120 },
+    lastOrigin: { type: String, trim: true, maxlength: 200 },
   },
   { timestamps: true },
 );

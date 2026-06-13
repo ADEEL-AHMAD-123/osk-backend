@@ -281,9 +281,10 @@ export const subscriptionService = {
     doc.cancelledAt = null;
     await doc.save();
 
-    /* Confirmation email — fire-and-forget. Look up the seller's
-     * email/name; if the user has been deleted (rare race), just
-     * skip the send. */
+    /* Confirmation email — fire-and-forget. activate() is called by
+     * the payment webhook (no live request from the seller), so we
+     * lean entirely on the seller's stored `lastOrigin` for the
+     * email link base URL. Falls back to APP_BASE_URL when not set. */
     void (async () => {
       try {
         const user = await UserModel.findById(doc.user).exec();
@@ -293,6 +294,7 @@ export const subscriptionService = {
           name: user.name,
           planName: plan?.name ?? doc.planSlug,
           periodEnd: doc.currentPeriodEnd,
+          userOrigin: user.lastOrigin ?? null,
         });
       } catch (err) {
         logger.warn({ err }, 'subscription activation email skipped');
@@ -304,7 +306,10 @@ export const subscriptionService = {
 
   /** Seller-initiated cancel — status flips, currentPeriodEnd stays so
    *  they keep what they paid for until the period rolls. */
-  async cancel(userId: string): Promise<SubscriptionDoc> {
+  async cancel(
+    userId: string,
+    ctx: { origin?: string | null } = {},
+  ): Promise<SubscriptionDoc> {
     const doc = await this.getCurrent(userId);
     if (!doc) throw new NotFoundError('No subscription found');
     if (doc.status === 'cancelled' || doc.status === 'expired') {
@@ -315,7 +320,9 @@ export const subscriptionService = {
     await doc.save();
 
     /* Cancellation acknowledgement email. Surfaces the access-until
-     * date so the seller knows their grace period. */
+     * date so the seller knows their grace period. Cancel is always
+     * triggered by the user clicking from their browser, so we have
+     * a live request origin to use first. */
     void (async () => {
       try {
         const [user, plan] = await Promise.all([
@@ -328,6 +335,8 @@ export const subscriptionService = {
           name: user.name,
           planName: plan?.name ?? doc.planSlug,
           periodEnd: doc.currentPeriodEnd,
+          requestOrigin: ctx.origin ?? null,
+          userOrigin: user.lastOrigin ?? null,
         });
       } catch (err) {
         logger.warn({ err }, 'subscription cancel email skipped');

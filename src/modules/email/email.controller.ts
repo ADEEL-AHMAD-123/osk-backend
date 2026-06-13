@@ -9,6 +9,8 @@ import { logger } from '../../config/logger';
 import { getEmailProvider } from '../../shared/email/EmailProvider';
 import { SmtpDeliveryError } from '../../shared/email/smtpProvider';
 import { renderEmailPreview } from '../../shared/email/emailPreviews';
+import { renderEmailTemplate } from '../../shared/email/emailTemplates';
+import { getBrandingContext } from '../../shared/email/brandingContext';
 import {
   PREVIEWABLE_EMAIL_TYPES,
   type PreviewableEmailType,
@@ -52,21 +54,29 @@ export const sendTestEmail: RequestHandler = async (req, res) => {
     );
   }
 
+  /* Wrap the test in the active template + live branding so the
+   * admin sees what real emails will actually look like — including
+   * the configured From identity and the contact line in the footer. */
+  const branding = await getBrandingContext();
+  const { html, text } = renderEmailTemplate(
+    settings.activeTemplate,
+    {
+      title: `${branding.appName} email is configured`,
+      body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi — this is a test message from your ${branding.appName} admin panel. If you can read this, the <strong>${settings.provider}</strong> provider is working end-to-end and the active template is rendering correctly.</p>
+             <p style="margin:0 0 8px;font-size:13px;">Sent at ${new Date().toISOString()}.</p>`,
+      buttonHref: '#',
+      buttonLabel: 'Confirmed',
+    },
+    branding,
+  );
+
   const provider = await getEmailProvider();
   try {
     await provider.send({
       to: parsed.data.to,
-      subject: 'OSK email is configured correctly',
-      html: `
-        <p>Hi,</p>
-        <p>This is a test message from your OSK admin panel.</p>
-        <p>If you're reading this, your <strong>${settings.provider}</strong> provider is working end-to-end —
-        nice work.</p>
-        <p style="color:#888;font-size:12px;margin-top:24px">
-          Sent from /admin/email · ${new Date().toISOString()}
-        </p>
-      `,
-      text: `OSK test email — provider ${settings.provider} is configured correctly. Sent ${new Date().toISOString()}.`,
+      subject: `${branding.appName} email is configured correctly`,
+      html,
+      text,
     });
     logger.info(
       {
@@ -124,9 +134,13 @@ export const previewEmail: RequestHandler = async (req, res) => {
     ? (requestedType as PreviewableEmailType)
     : 'welcome';
 
+  /* Fetch the live branding so the preview footer matches what an
+   * actual send would produce — From identity, support phone and
+   * postal address from /admin/email + /admin/settings. */
+  const branding = await getBrandingContext();
   sendSuccess(res, {
     template,
     type,
-    ...renderEmailPreview(template, type),
+    ...renderEmailPreview(template, type, branding),
   });
 };

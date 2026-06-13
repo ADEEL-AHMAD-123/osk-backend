@@ -1,4 +1,4 @@
-import { renderEmailTemplate } from './emailTemplates';
+import { renderEmailTemplate, type BrandingContext } from './emailTemplates';
 import type { EmailTemplateKey } from '../../modules/email/emailSettings.model';
 import type { PreviewableEmailType } from './notificationEmails';
 
@@ -6,35 +6,44 @@ import type { PreviewableEmailType } from './notificationEmails';
  * Sample-data renderer for the admin's email preview pane.
  *
  * Each entry mirrors the real send helper in `notificationEmails.ts`
- * but uses safe placeholder values so the admin can see the exact
- * HTML structure of every email type with every template applied.
+ * but uses safe placeholder values for the BODY (sample recipient
+ * names, fake plan / property names, etc.). The FOOTER receives the
+ * real `branding` context — the admin's From identity, support
+ * phone and postal address — so the preview shows exactly what a
+ * seller will see, not stale hardcoded contact details.
  */
 export function renderEmailPreview(
   template: EmailTemplateKey,
   type: PreviewableEmailType,
+  branding: BrandingContext,
 ): { html: string; text: string; subject: string } {
+  /* Use the operator's actual brand name in the sample subject + body
+   * so the preview shows them what users will read. The footer is
+   * handled separately by the template renderer below. */
+  const app = branding.appName || 'OSK';
+
   const samples: Record<
     PreviewableEmailType,
     { subject: string; title: string; body: string; buttonHref: string; buttonLabel: string }
   > = {
     welcome: {
-      subject: 'Welcome to OSK, Alex',
-      title: 'Welcome to OSK',
+      subject: `Welcome to ${app}, Alex`,
+      title: `Welcome to ${app}`,
       body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi Alex — your account is ready. Browse, save listings, send inquiries to owners and agents, or list your own property if you're selling. We&rsquo;re glad you&rsquo;re here.</p>`,
       buttonHref: 'https://example.com/dashboard',
       buttonLabel: 'Open your dashboard',
     },
     verify: {
-      subject: 'Confirm your OSK email',
-      title: 'Confirm your OSK email',
-      body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi Alex — welcome to OSK. Tap the button below to verify your email and unlock saved listings, inquiries and messaging.</p>`,
+      subject: `Confirm your ${app} email`,
+      title: `Confirm your ${app} email`,
+      body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi Alex — welcome to ${app}. Tap the button below to verify your email and unlock saved listings, inquiries and messaging.</p>`,
       buttonHref: 'https://example.com/verify-email?token=sample',
       buttonLabel: 'Verify email',
     },
     'reset-password': {
-      subject: 'Reset your OSK password',
-      title: 'Reset your OSK password',
-      body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi Alex — you (or someone using your email) asked to reset your OSK password. Use the button below within the next hour.</p>
+      subject: `Reset your ${app} password`,
+      title: `Reset your ${app} password`,
+      body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi Alex — you (or someone using your email) asked to reset your ${app} password. Use the button below within the next hour.</p>
              <p style="margin:0;font-size:13px;">If you didn&rsquo;t request this, ignore this email and your password stays the same.</p>`,
       buttonHref: 'https://example.com/reset-password?token=sample',
       buttonLabel: 'Reset password',
@@ -75,6 +84,6 @@ export function renderEmailPreview(
   };
 
   const sample = samples[type];
-  const { html, text } = renderEmailTemplate(template, sample);
+  const { html, text } = renderEmailTemplate(template, sample, branding);
   return { html, text, subject: sample.subject };
 }

@@ -19,6 +19,9 @@ export interface CreateUserData {
   passwordHash: string;
   role: UserRole;
   emailVerifyTokenHash: string;
+  /** Browser Origin of the registration request, used later as the
+   *  fallback base URL for background-flow emails. */
+  lastOrigin?: string;
 }
 
 export interface SaveRefreshData {

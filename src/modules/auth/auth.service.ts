@@ -82,7 +82,10 @@ async function issueTokens(user: UserDoc, family: string): Promise<AuthIssue> {
 }
 
 export const authService = {
-  async register(input: RegisterInput): Promise<AuthIssue> {
+  async register(
+    input: RegisterInput,
+    ctx: { origin?: string | null } = {},
+  ): Promise<AuthIssue> {
     if (await authRepository.emailTaken(input.email)) {
       throw new ConflictError('An account with this email already exists');
     }
@@ -94,6 +97,11 @@ export const authService = {
       passwordHash,
       role: input.role,
       emailVerifyTokenHash: verify.hash,
+      /* Stamp the signup origin so background email flows in the
+       * future (subscription webhook activations, admin-triggered
+       * property reviews) can construct links pointing back to the
+       * same domain. */
+      lastOrigin: ctx.origin ?? undefined,
     });
     /* Deliver the verification link. Send is fire-and-forget — a delivery
      * blip must not block registration. The email module handles its own
@@ -103,11 +111,16 @@ export const authService = {
       to: user.email,
       name: user.name,
       token: verify.token,
+      requestOrigin: ctx.origin,
     });
     /* Welcome on top of the verify link — they're conceptually separate
      * (verify proves email ownership, welcome introduces the product),
      * so they're sent as two messages rather than merged. */
-    void sendWelcomeEmail({ to: user.email, name: user.name });
+    void sendWelcomeEmail({
+      to: user.email,
+      name: user.name,
+      requestOrigin: ctx.origin,
+    });
     logger.info(
       { email: user.email, verifyToken: isProd ? undefined : verify.token },
       'email verification token issued',
@@ -115,7 +128,10 @@ export const authService = {
     return issueTokens(user, newTokenFamily());
   },
 
-  async login(input: LoginInput): Promise<AuthIssue> {
+  async login(
+    input: LoginInput,
+    ctx: { origin?: string | null } = {},
+  ): Promise<AuthIssue> {
     const user = await authRepository.findUserByEmail(input.email, true);
     // Same error whether the email or the password is wrong (no enumeration).
     if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
@@ -123,6 +139,13 @@ export const authService = {
     }
     if (user.status === 'blocked') {
       throw new ForbiddenError('This account has been suspended');
+    }
+    /* Refresh the stored lastOrigin every login so background-flow
+     * emails always point to wherever the user most recently signed
+     * in. Skip if origin didn't change to avoid wasted writes. */
+    if (ctx.origin && user.lastOrigin !== ctx.origin) {
+      user.lastOrigin = ctx.origin;
+      await user.save();
     }
     return issueTokens(user, newTokenFamily());
   },
@@ -181,17 +204,25 @@ export const authService = {
   },
 
   /** Always resolves — never reveals whether an account exists. */
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(
+    email: string,
+    ctx: { origin?: string | null } = {},
+  ): Promise<void> {
     const user = await authRepository.findUserByEmail(email);
     if (!user) return;
     const reset = createOpaqueToken();
     user.passwordResetTokenHash = reset.hash;
     user.passwordResetExpires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+    if (ctx.origin && user.lastOrigin !== ctx.origin) {
+      user.lastOrigin = ctx.origin;
+    }
     await user.save();
     void sendPasswordResetEmail({
       to: user.email,
       name: user.name,
       token: reset.token,
+      requestOrigin: ctx.origin,
+      userOrigin: user.lastOrigin,
     });
     logger.info(
       { email: user.email, resetToken: isProd ? undefined : reset.token },

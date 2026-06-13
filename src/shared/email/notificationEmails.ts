@@ -2,6 +2,8 @@ import { logger } from '../../config/logger';
 import { getEmailProvider } from './EmailProvider';
 import { emailSettingsService } from '../../modules/email/emailSettings.service';
 import { renderEmailTemplate } from './emailTemplates';
+import { getBrandingContext } from './brandingContext';
+import { resolveAppBaseUrl } from './appBaseUrl';
 
 /* ──────────────────────────────────────────────────────────────────────
  * Event-driven transactional emails.
@@ -23,11 +25,18 @@ import { renderEmailTemplate } from './emailTemplates';
 
 const APP_NAME = 'OSK';
 
-function appUrl(): string {
-  return (process.env.APP_BASE_URL ?? 'http://localhost:3000').replace(
-    /\/+$/,
-    '',
-  );
+/**
+ * Common params every event-driven email helper accepts. The two
+ * origin fields drive the `resolveAppBaseUrl` priority: current
+ * request first, then the recipient's stored last origin, then env.
+ */
+interface OriginParams {
+  requestOrigin?: string | null;
+  userOrigin?: string | null;
+}
+
+function appUrl(opts: OriginParams): string {
+  return resolveAppBaseUrl(opts);
 }
 
 function firstName(full: string): string {
@@ -54,13 +63,23 @@ async function fire(opts: {
   logKey: string;
 }): Promise<void> {
   try {
-    const secrets = await emailSettingsService.getProviderSecrets();
-    const { html, text } = renderEmailTemplate(secrets.activeTemplate, {
-      title: opts.title,
-      body: opts.body,
-      buttonHref: opts.buttonHref,
-      buttonLabel: opts.buttonLabel,
-    });
+    /* Pull the active template + the live branding (From identity +
+     * site contact info) in parallel so the footer matches whatever
+     * the admin saved in /admin/email and /admin/settings. */
+    const [secrets, branding] = await Promise.all([
+      emailSettingsService.getProviderSecrets(),
+      getBrandingContext(),
+    ]);
+    const { html, text } = renderEmailTemplate(
+      secrets.activeTemplate,
+      {
+        title: opts.title,
+        body: opts.body,
+        buttonHref: opts.buttonHref,
+        buttonLabel: opts.buttonLabel,
+      },
+      branding,
+    );
     const provider = await getEmailProvider();
     await provider.send({
       to: opts.to,
@@ -75,14 +94,17 @@ async function fire(opts: {
 
 /* ─── welcome ─────────────────────────────────────────────────────── */
 
-export interface WelcomeEmailParams {
+export interface WelcomeEmailParams extends OriginParams {
   to: string;
   name: string;
 }
 
-export async function sendWelcomeEmail(
-  { to, name }: WelcomeEmailParams,
-): Promise<void> {
+export async function sendWelcomeEmail({
+  to,
+  name,
+  requestOrigin,
+  userOrigin,
+}: WelcomeEmailParams): Promise<void> {
   const first = firstName(name);
   await fire({
     to,
@@ -91,7 +113,7 @@ export async function sendWelcomeEmail(
     body: `<p style="margin:0 0 16px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(
       first,
     )} — your account is ready. Browse, save listings, send inquiries to owners and agents, or list your own property if you're selling. We&rsquo;re glad you&rsquo;re here.</p>`,
-    buttonHref: `${appUrl()}/dashboard`,
+    buttonHref: `${appUrl({ requestOrigin, userOrigin })}/dashboard`,
     buttonLabel: 'Open your dashboard',
     logKey: 'welcome-email',
   });
@@ -99,7 +121,7 @@ export async function sendWelcomeEmail(
 
 /* ─── subscription ────────────────────────────────────────────────── */
 
-export interface SubscriptionEmailParams {
+export interface SubscriptionEmailParams extends OriginParams {
   to: string;
   name: string;
   planName: string;
@@ -115,6 +137,8 @@ export async function sendSubscriptionActivatedEmail({
   amount,
   currency,
   periodEnd,
+  requestOrigin,
+  userOrigin,
 }: SubscriptionEmailParams): Promise<void> {
   const first = firstName(name);
   const priceLine =
@@ -139,7 +163,7 @@ export async function sendSubscriptionActivatedEmail({
         first,
       )} — your subscription to <strong>${escapeHtml(planName)}</strong> is live. You can start using every feature on your tier right away.</p>` +
       priceLine,
-    buttonHref: `${appUrl()}/dashboard/subscription`,
+    buttonHref: `${appUrl({ requestOrigin, userOrigin })}/dashboard/subscription`,
     buttonLabel: 'Manage subscription',
     logKey: 'subscription-activated-email',
   });
@@ -150,6 +174,8 @@ export async function sendSubscriptionCancelledEmail({
   name,
   planName,
   periodEnd,
+  requestOrigin,
+  userOrigin,
 }: Omit<SubscriptionEmailParams, 'amount' | 'currency'>): Promise<void> {
   const first = firstName(name);
   const accessLine = periodEnd
@@ -169,7 +195,7 @@ export async function sendSubscriptionCancelledEmail({
       )} — we&rsquo;ve cancelled your <strong>${escapeHtml(
         planName,
       )}</strong> plan as requested.</p>` + accessLine,
-    buttonHref: `${appUrl()}/pricing`,
+    buttonHref: `${appUrl({ requestOrigin, userOrigin })}/pricing`,
     buttonLabel: 'See plans again',
     logKey: 'subscription-cancelled-email',
   });
@@ -177,7 +203,7 @@ export async function sendSubscriptionCancelledEmail({
 
 /* ─── property moderation ────────────────────────────────────────── */
 
-export interface PropertyEmailParams {
+export interface PropertyEmailParams extends OriginParams {
   to: string;
   name: string;
   propertyTitle: string;
@@ -189,6 +215,8 @@ export async function sendPropertyApprovedEmail({
   name,
   propertyTitle,
   propertySlug,
+  requestOrigin,
+  userOrigin,
 }: PropertyEmailParams): Promise<void> {
   const first = firstName(name);
   await fire({
@@ -200,7 +228,7 @@ export async function sendPropertyApprovedEmail({
     )} — your listing <strong>${escapeHtml(
       propertyTitle,
     )}</strong> has been approved and is now visible to buyers. Share the link below or jump into your dashboard to see views and inquiries roll in.</p>`,
-    buttonHref: `${appUrl()}/property/${encodeURIComponent(propertySlug)}`,
+    buttonHref: `${appUrl({ requestOrigin, userOrigin })}/property/${encodeURIComponent(propertySlug)}`,
     buttonLabel: 'View your live listing',
     logKey: 'property-approved-email',
   });
@@ -248,6 +276,8 @@ export async function sendPropertyRejectedEmail({
   propertyTitle,
   propertySlug,
   reason,
+  requestOrigin,
+  userOrigin,
 }: PropertyRejectedEmailParams): Promise<void> {
   const first = firstName(name);
   const reasonBlock = reason
@@ -268,7 +298,7 @@ export async function sendPropertyRejectedEmail({
       )}</strong> this round.</p>` +
       reasonBlock +
       `<p style="margin:0 0 16px;font-size:14px;">Edit the listing, then click <em>Submit for review</em> again. We aim to re-check within one business day.</p>`,
-    buttonHref: `${appUrl()}/dashboard/listings/${encodeURIComponent(
+    buttonHref: `${appUrl({ requestOrigin, userOrigin })}/dashboard/listings/${encodeURIComponent(
       propertySlug,
     )}/edit`,
     buttonLabel: 'Edit listing',

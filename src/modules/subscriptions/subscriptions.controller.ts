@@ -118,6 +118,8 @@ export const subscribe: RequestHandler = async (req, res) => {
 
 export const cancelSubscription: RequestHandler = async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
-  const doc = await subscriptionService.cancel((req.user as AuthUser).id);
+  const doc = await subscriptionService.cancel((req.user as AuthUser).id, {
+    origin: req.headers.origin ?? null,
+  });
   sendSuccess(res, toSubscriptionDTO(doc));
 };

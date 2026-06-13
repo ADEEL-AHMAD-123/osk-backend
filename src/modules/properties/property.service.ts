@@ -306,7 +306,12 @@ export const propertyService = {
 
     /* Notify the owner — fire-and-forget. Approved gets the "live
      * now" email, rejected gets the reason in a styled block so the
-     * seller knows what to fix before resubmitting. */
+     * seller knows what to fix before resubmitting.
+     *
+     * Review is triggered by an admin, so the live request origin is
+     * the admin's — that's irrelevant to the seller. Use the owner's
+     * stored `lastOrigin` so links point to whichever domain the
+     * seller actually uses. */
     void (async () => {
       try {
         const owner = await UserModel.findById(doc.owner).exec();
@@ -317,6 +322,7 @@ export const propertyService = {
             name: owner.name,
             propertyTitle: doc.title,
             propertySlug: doc.slug,
+            userOrigin: owner.lastOrigin ?? null,
           });
         } else {
           await sendPropertyRejectedEmail({
@@ -325,6 +331,7 @@ export const propertyService = {
             propertyTitle: doc.title,
             propertySlug: doc.slug,
             reason: doc.rejectionReason ?? '',
+            userOrigin: owner.lastOrigin ?? null,
           });
         }
       } catch (err) {

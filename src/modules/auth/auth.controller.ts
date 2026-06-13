@@ -48,7 +48,9 @@ function readRefreshCookie(req: Request): string | undefined {
 /** POST /auth/register */
 export const register: RequestHandler = async (req, res) => {
   const input = registerSchema.parse(req.body);
-  const { result, refreshToken } = await authService.register(input);
+  const { result, refreshToken } = await authService.register(input, {
+    origin: req.headers.origin ?? null,
+  });
   setRefreshCookie(res, refreshToken);
   sendSuccess(res, result, { status: 201 });
 };
@@ -56,7 +58,9 @@ export const register: RequestHandler = async (req, res) => {
 /** POST /auth/login */
 export const login: RequestHandler = async (req, res) => {
   const input = loginSchema.parse(req.body);
-  const { result, refreshToken } = await authService.login(input);
+  const { result, refreshToken } = await authService.login(input, {
+    origin: req.headers.origin ?? null,
+  });
   setRefreshCookie(res, refreshToken);
   sendSuccess(res, result);
 };
@@ -99,7 +103,9 @@ export const verifyEmail: RequestHandler = async (req, res) => {
 /** POST /auth/forgot-password — always succeeds (no account enumeration). */
 export const forgotPassword: RequestHandler = async (req, res) => {
   const { email } = forgotPasswordSchema.parse(req.body);
-  await authService.forgotPassword(email);
+  await authService.forgotPassword(email, {
+    origin: req.headers.origin ?? null,
+  });
   sendSuccess(res, { sent: true });
 };
 
