@@ -20,6 +20,10 @@ import {
   subscriptionRoutes,
 } from './subscriptions/subscriptions.routes';
 import { emailRoutes } from './email/email.routes';
+import {
+  captchaAdminRoutes,
+  captchaPublicRoutes,
+} from './captcha/captcha.routes';
 
 /**
  * Module registry — the ONE place modules are wired into the API. To add a
@@ -47,6 +51,8 @@ export function registerModules(): Router {
   router.use('/subscription-plans', subscriptionPlanRoutes);
   router.use('/subscriptions', subscriptionRoutes);
   router.use('/admin/email', emailRoutes);
+  router.use('/captcha', captchaPublicRoutes);
+  router.use('/admin/captcha', captchaAdminRoutes);
 
   return router;
 }

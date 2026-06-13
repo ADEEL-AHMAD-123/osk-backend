@@ -4,6 +4,8 @@ import { UnauthorizedError } from '../../shared/errors';
 import { env, isProd } from '../../config/env';
 import { durationToMs, readAccessTokenExpiry } from './auth.tokens';
 import { authService } from './auth.service';
+import { captchaService } from '../captcha/captcha.service';
+import { ForbiddenError } from '../../shared/errors';
 import {
   changePasswordSchema,
   forgotPasswordSchema,
@@ -48,9 +50,25 @@ function readRefreshCookie(req: Request): string | undefined {
 /** POST /auth/register */
 export const register: RequestHandler = async (req, res) => {
   const input = registerSchema.parse(req.body);
-  const { result, refreshToken } = await authService.register(input, {
-    origin: req.headers.origin ?? null,
-  });
+  /* Captcha gate. `verifyToken` returns true when captcha is
+   * disabled, so this check is also the no-op in dev. Returns 403
+   * with a clear message on fail so the frontend can show a useful
+   * error without revealing whether the email was already taken. */
+  const captchaOk = await captchaService.verifyToken(
+    input.captchaToken,
+    (req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ||
+      req.ip) ?? null,
+  );
+  if (!captchaOk) {
+    throw new ForbiddenError(
+      'We couldn’t verify the captcha. Refresh the page and try again.',
+    );
+  }
+  const { captchaToken: _t, ...registerInput } = input;
+  const { result, refreshToken } = await authService.register(
+    registerInput,
+    { origin: req.headers.origin ?? null },
+  );
   setRefreshCookie(res, refreshToken);
   sendSuccess(res, result, { status: 201 });
 };

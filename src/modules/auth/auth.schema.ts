@@ -12,6 +12,10 @@ export const registerSchema = z.object({
     .regex(/[A-Z]/, 'Include an uppercase letter')
     .regex(/[0-9]/, 'Include a number'),
   role: z.enum(REGISTRABLE_ROLES).default('buyer'),
+  /** Captcha token from the signup form. Optional at the schema
+   *  level — the controller decides whether to require it based on
+   *  the admin's captcha settings. */
+  captchaToken: z.string().max(4000).optional(),
 });
 
 export const loginSchema = z.object({
