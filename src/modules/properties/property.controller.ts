@@ -93,6 +93,17 @@ export const reopenProperty: RequestHandler = async (req, res) => {
   );
 };
 
+/** DELETE /properties/:id — owner (or admin) hard-deletes a listing.
+ *  Cascades inquiries, threads, messages, and reviews tied to it.
+ *  Frees the subscription slot automatically. */
+export const deleteProperty: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  sendSuccess(
+    res,
+    await propertyService.remove(req.params.id ?? '', req.user),
+  );
+};
+
 /** POST /properties/:id/approve — admin moderation. */
 export const approveProperty: RequestHandler = async (req, res) => {
   sendSuccess(res, await propertyService.review(req.params.id ?? '', 'approve'));

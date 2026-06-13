@@ -5,6 +5,7 @@ import { authenticate, authorize } from '../../shared/middleware/auth';
 import {
   approveProperty,
   createProperty,
+  deleteProperty,
   getMyAnalytics,
   getProperty,
   listMyProperties,
@@ -76,6 +77,12 @@ propertyRoutes.post(
   authenticate,
   authorize('buyer', 'seller', 'agent', 'admin'),
   asyncHandler(reopenProperty),
+);
+propertyRoutes.delete(
+  '/:id',
+  authenticate,
+  authorize('buyer', 'seller', 'agent', 'admin'),
+  asyncHandler(deleteProperty),
 );
 
 // Admin moderation.

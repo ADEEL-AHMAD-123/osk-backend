@@ -13,6 +13,11 @@ import {
   sendPropertyRejectedEmail,
 } from '../../shared/email/notificationEmails';
 import { logger } from '../../config/logger';
+import { InquiryModel } from '../inquiries/inquiry.model';
+import { ReviewModel } from '../reviews/review.model';
+import { ThreadModel } from '../threads/thread.model';
+import { MessageModel } from '../threads/message.model';
+import { PropertyModel } from './property.model';
 import { propertyRepository, type OwnerAnalytics } from './property.repository';
 import { toPropertyDTO } from './property.mapper';
 import type { PropertyDoc } from './property.model';
@@ -340,5 +345,51 @@ export const propertyService = {
     })();
 
     return toPropertyDTO(doc);
+  },
+
+  /**
+   * Permanently delete a listing and everything attached to it.
+   *
+   * Owner or admin only. Cascades:
+   *   - inquiries on this property
+   *   - threads and all their messages
+   *   - reviews left on this property
+   *   - the listing itself
+   *
+   * (Saved-by-others entries live in localStorage on the frontend, so
+   *  no DB cleanup needed there — the stale entry just disappears
+   *  next time those users open /saved.)
+   *
+   * The subscription slot is freed automatically because the
+   * `subscriptionService.countOwnedPublished` query reads from the
+   * Property collection at request time.
+   */
+  async remove(id: string, actor: AuthUser): Promise<{ deleted: true }> {
+    const doc = await loadOwned(id, actor);
+    const propertyId = doc._id;
+
+    const threads = await ThreadModel.find({ propertyId })
+      .select('_id')
+      .lean()
+      .exec();
+    const threadIds = threads.map((t) => t._id);
+
+    await Promise.all([
+      InquiryModel.deleteMany({ propertyId }).exec(),
+      ReviewModel.deleteMany({ propertyId }).exec(),
+      threadIds.length
+        ? MessageModel.deleteMany({ threadId: { $in: threadIds } }).exec()
+        : Promise.resolve(),
+      threadIds.length
+        ? ThreadModel.deleteMany({ _id: { $in: threadIds } }).exec()
+        : Promise.resolve(),
+    ]);
+
+    await PropertyModel.deleteOne({ _id: propertyId }).exec();
+    logger.info(
+      { propertyId: propertyId.toString(), actor: actor.id },
+      'property hard-deleted',
+    );
+    return { deleted: true };
   },
 };

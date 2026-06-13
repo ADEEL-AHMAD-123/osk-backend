@@ -5,6 +5,7 @@ import { listUsers } from '../users/user.controller';
 import {
   approvePropertyAdmin,
   deleteReview,
+  deleteUser,
   getOverview,
   impersonateUser,
   listAuditLogs,
@@ -40,6 +41,7 @@ adminRoutes.patch(
 /* ─── user management ──────────────────────────────────────────────────── */
 adminRoutes.get('/users', asyncHandler(listUsers));
 adminRoutes.patch('/users/:id', asyncHandler(updateUser));
+adminRoutes.delete('/users/:id', asyncHandler(deleteUser));
 adminRoutes.post('/users/:id/impersonate', asyncHandler(impersonateUser));
 
 /* ─── review moderation ────────────────────────────────────────────────── */

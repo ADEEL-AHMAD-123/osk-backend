@@ -8,10 +8,12 @@ export type AuditAction =
   | 'user.role.update'
   | 'user.status.update'
   | 'user.impersonate'
+  | 'user.delete'
   | 'property.approve'
   | 'property.reject'
   | 'property.feature'
   | 'property.unfeature'
+  | 'property.delete'
   | 'review.delete'
   | 'settings.update';
 

@@ -1,15 +1,22 @@
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import {
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
 } from '../../shared/errors';
 import { buildMeta, sendSuccess } from '../../shared/response';
 import { UserModel } from '../auth/user.model';
-import { InquiryModel } from '../inquiries/inquiry.model';
+import { RefreshTokenModel } from '../auth/refreshToken.model';
+import { InquiryModel } from '../inquiries/inquiry.model'; // used by getOverview
 import { PropertyModel } from '../properties/property.model';
 import { ReviewModel } from '../reviews/review.model';
+import { ThreadModel } from '../threads/thread.model';
+import { MessageModel } from '../threads/message.model';
+import { NotificationModel } from '../notifications/notification.model';
+import { SubscriptionModel } from '../subscriptions/subscription.model';
+import { logger } from '../../config/logger';
 import { propertyService } from '../properties/property.service';
 import { propertyFiltersSchema } from '../properties/property.schema';
 import { toUserDTO } from '../users/user.mapper';
@@ -127,6 +134,104 @@ export const updateUser: RequestHandler = async (req, res) => {
   }
 
   sendSuccess(res, toUserDTO(user));
+};
+
+/**
+ * DELETE /admin/users/:id — permanently remove a user and everything
+ * they own. After this returns, the email address is free again, so
+ * a brand-new account with the same email is allowed.
+ *
+ * Cascades:
+ *   - all listings owned by the user (and inquiries/threads/messages/
+ *     reviews attached to each, via propertyService.remove)
+ *   - inquiries the user filed
+ *   - threads/messages the user participated in
+ *   - reviews the user wrote
+ *   - in-app notifications addressed to the user
+ *   - active subscriptions
+ *   - refresh tokens (signs the user out of every device)
+ *
+ * Self-deletion is refused — an admin can't accidentally lock
+ * themselves out of the admin panel.
+ */
+export const deleteUser: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  const userId = req.params.id ?? '';
+  if (userId === req.user.id) {
+    throw new ForbiddenError(
+      'You can’t delete your own admin account from this screen.',
+    );
+  }
+
+  const existing = await UserModel.findById(userId).exec();
+  if (!existing) throw new NotFoundError('User not found');
+
+  /* Delete every property owned by the user via the property service —
+   * that handles the per-property cascade (inquiries on the property,
+   * threads about it, messages in those threads, reviews on it). */
+  const ownedIds = await PropertyModel.find({ owner: existing._id })
+    .select('_id')
+    .lean()
+    .exec();
+  for (const p of ownedIds) {
+    await propertyService.remove(p._id.toString(), {
+      id: existing._id.toString(),
+      role: 'admin',
+      email: existing.email,
+    });
+  }
+
+  /* Now clean up everything still keyed by the user themselves. */
+  const threadsWithUser = await ThreadModel.find({
+    participants: existing._id,
+  })
+    .select('_id')
+    .lean()
+    .exec();
+  const threadIds = threadsWithUser.map((t) => t._id);
+
+  /* Inquiries received on the user's properties are already gone via
+   * propertyService.remove above. Inquiry records don't have a sender
+   * userId (the inquirer's name/email is captured anonymously), so
+   * there's nothing extra to clean up here for the sender side. */
+  await Promise.all([
+    ReviewModel.deleteMany({ authorId: existing._id }).exec(),
+    NotificationModel.deleteMany({ userId: existing._id }).exec(),
+    SubscriptionModel.deleteMany({ user: existing._id }).exec(),
+    RefreshTokenModel.deleteMany({ user: existing._id }).exec(),
+    threadIds.length
+      ? MessageModel.deleteMany({ threadId: { $in: threadIds } }).exec()
+      : Promise.resolve(),
+    threadIds.length
+      ? ThreadModel.deleteMany({ _id: { $in: threadIds } }).exec()
+      : Promise.resolve(),
+  ]);
+
+  await UserModel.deleteOne({ _id: existing._id }).exec();
+
+  void auditService.record({
+    actor: req.user,
+    action: 'user.delete',
+    entityType: 'user',
+    entityId: existing._id.toString(),
+    meta: {
+      email: existing.email,
+      role: existing.role,
+      propertiesDeleted: ownedIds.length,
+    },
+    req,
+  });
+  logger.info(
+    {
+      adminId: req.user.id,
+      deletedUserId: existing._id.toString(),
+      email: existing.email,
+      propertiesDeleted: ownedIds.length,
+    },
+    'admin deleted user',
+  );
+
+  sendSuccess(res, { deleted: true });
 };
 
 /* ─── review moderation ─────────────────────────────────────────────────── */
