@@ -286,9 +286,16 @@ export const authService = {
    * Re-issue an email verification token for the signed-in user. Quietly
    * no-ops if the email is already verified — clients shouldn't be able
    * to spam the mail server by hammering "resend".
+   *
+   * `ctx.origin` is the live request Origin. It wins over the user's
+   * stored `lastOrigin` so the verification link points to whichever
+   * domain the seller clicked "Resend" from RIGHT NOW — even if they
+   * previously logged in elsewhere. The stored value is also refreshed
+   * so any background email that fires next uses the new domain too.
    */
   async resendVerification(
     userId: string,
+    ctx: { origin?: string | null } = {},
   ): Promise<{ alreadyVerified: boolean }> {
     const user = await authRepository.findUserById(userId);
     if (!user) throw new UnauthorizedError('Session is no longer valid');
@@ -296,12 +303,17 @@ export const authService = {
 
     const verify = createOpaqueToken();
     user.emailVerifyTokenHash = verify.hash;
+    if (ctx.origin && user.lastOrigin !== ctx.origin) {
+      user.lastOrigin = ctx.origin;
+    }
     await user.save();
 
     void sendVerifyEmail({
       to: user.email,
       name: user.name,
       token: verify.token,
+      requestOrigin: ctx.origin,
+      userOrigin: user.lastOrigin,
     });
     logger.info(
       { email: user.email, verifyToken: isProd ? undefined : verify.token },

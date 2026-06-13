@@ -140,6 +140,8 @@ export const changePassword: RequestHandler = async (req, res) => {
 /** POST /auth/resend-verification — re-issue the email verification link. */
 export const resendVerification: RequestHandler = async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
-  const result = await authService.resendVerification(req.user.id);
+  const result = await authService.resendVerification(req.user.id, {
+    origin: req.headers.origin ?? null,
+  });
   sendSuccess(res, { sent: true, ...result });
 };
