@@ -36,10 +36,12 @@ function callbackUrlFor(req: Parameters<RequestHandler>[0]): string {
     (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]?.trim() ||
     req.get('host') ||
     '';
-  /* `req.baseUrl` is `/api/v1` because the API router is mounted
-   * there; the callback handler is at `/auth/google/callback`
-   * relative to that base. */
-  return `${proto}://${host}${req.baseUrl}/auth/google/callback`;
+  /* `req.baseUrl` is the full mount path of the router that owns this
+   * handler — for the public Google routes that's `/api/v1/auth/google`.
+   * The callback handler is at `/callback` *within* that router, so we
+   * only append `/callback`. (Appending `/auth/google/callback` would
+   * produce `.../auth/google/auth/google/callback` — the path doubles.) */
+  return `${proto}://${host}${req.baseUrl}/callback`;
 }
 
 /** Where to send the user after a successful sign-in. Comes from the
