@@ -128,16 +128,20 @@ export interface SiteSettingsDoc extends Document {
   updatedAt: Date;
 }
 
+/* Each contact field is optional at the schema level so a fresh
+ * install can start with no contact details and the admin fills them
+ * in via /admin/settings. Empty strings make the public footer hide
+ * the relevant line rather than broadcast a placeholder. */
 const contactSchema = new Schema<SiteSettingsContact>(
   {
-    email: { type: String, required: true, trim: true, lowercase: true },
-    phoneTel: { type: String, required: true, trim: true },
-    phoneDisplay: { type: String, required: true, trim: true },
-    addressLine1: { type: String, required: true, trim: true },
-    addressCity: { type: String, required: true, trim: true },
-    addressRegion: { type: String, required: true, trim: true },
-    addressPostalCode: { type: String, required: true, trim: true },
-    addressCountry: { type: String, required: true, trim: true },
+    email: { type: String, default: '', trim: true, lowercase: true },
+    phoneTel: { type: String, default: '', trim: true },
+    phoneDisplay: { type: String, default: '', trim: true },
+    addressLine1: { type: String, default: '', trim: true },
+    addressCity: { type: String, default: '', trim: true },
+    addressRegion: { type: String, default: '', trim: true },
+    addressPostalCode: { type: String, default: '', trim: true },
+    addressCountry: { type: String, default: '', trim: true },
   },
   { _id: false },
 );
@@ -218,7 +222,19 @@ const settingsSchema = new Schema<SiteSettingsDoc>(
     },
     companyName: { type: String, required: true, trim: true, default: 'OSK' },
     logoUrl: { type: String, default: '' },
-    contact: { type: contactSchema, required: true },
+    contact: {
+      type: contactSchema,
+      default: () => ({
+        email: '',
+        phoneTel: '',
+        phoneDisplay: '',
+        addressLine1: '',
+        addressCity: '',
+        addressRegion: '',
+        addressPostalCode: '',
+        addressCountry: '',
+      }),
+    },
     appLinks: {
       type: appLinksSchema,
       default: () => ({ appStoreUrl: '', googlePlayUrl: '', appQrUrl: '' }),
@@ -309,13 +325,17 @@ The platform is provided "as is". To the maximum extent permitted by law, we exc
   termsUpdatedAt: '',
 };
 
+/* Empty defaults: a fresh install starts with no contact details,
+ * the admin fills them in via /admin/settings. The footer renders
+ * only the lines that have non-empty values, so an unconfigured
+ * install never shows someone else's address. */
 export const DEFAULT_CONTACT: SiteSettingsContact = {
-  email: 'hello@osk.dev',
-  phoneTel: '+13659557829',
-  phoneDisplay: '+1 (365) 955-7829',
-  addressLine1: '101 Catherine Street, 6th Floor',
-  addressCity: 'Ottawa',
-  addressRegion: 'Ontario',
-  addressPostalCode: 'K2P 2K9',
-  addressCountry: 'Canada',
+  email: '',
+  phoneTel: '',
+  phoneDisplay: '',
+  addressLine1: '',
+  addressCity: '',
+  addressRegion: '',
+  addressPostalCode: '',
+  addressCountry: '',
 };

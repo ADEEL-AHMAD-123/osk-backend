@@ -13,7 +13,7 @@ import { PropertyModel } from '../modules/properties/property.model';
 import { SAMPLE_PROPERTIES } from '../modules/properties/property.data';
 
 const SEED_USERS = [
-  { name: 'OSK Admin', email: 'admin@osk.dev', password: 'Admin1234', role: 'admin' as const },
+  { name: 'Site Admin', email: 'admin@example.com', password: 'Admin1234', role: 'admin' as const },
   {
     name: 'Avery Agent',
     email: 'adeeel5598@gmail.com',
