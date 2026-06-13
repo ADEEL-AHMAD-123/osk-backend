@@ -24,6 +24,10 @@ import {
   captchaAdminRoutes,
   captchaPublicRoutes,
 } from './captcha/captcha.routes';
+import {
+  googleAuthAdminRoutes,
+  googleAuthPublicRoutes,
+} from './googleAuth/googleAuth.routes';
 
 /**
  * Module registry — the ONE place modules are wired into the API. To add a
@@ -53,6 +57,8 @@ export function registerModules(): Router {
   router.use('/admin/email', emailRoutes);
   router.use('/captcha', captchaPublicRoutes);
   router.use('/admin/captcha', captchaAdminRoutes);
+  router.use('/auth/google', googleAuthPublicRoutes);
+  router.use('/admin/auth/google', googleAuthAdminRoutes);
 
   return router;
 }

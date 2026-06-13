@@ -33,7 +33,9 @@ function refreshCookieOptions(): CookieOptions {
   };
 }
 
-function setRefreshCookie(res: Response, token: string): void {
+/** Exported so federated-identity flows (Google OAuth, etc.) can mint
+ *  the same session cookie the password flow does. */
+export function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE, token, refreshCookieOptions());
 }
 

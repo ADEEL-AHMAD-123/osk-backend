@@ -1,6 +1,11 @@
 import mongoose, { type Types } from 'mongoose';
 import { ServiceUnavailableError } from '../../shared/errors';
-import { UserModel, type UserDoc, type UserRole } from './user.model';
+import {
+  UserModel,
+  type IdentityProvider,
+  type UserDoc,
+  type UserRole,
+} from './user.model';
 import { RefreshTokenModel, type RefreshTokenDoc } from './refreshToken.model';
 
 /** Auth infrastructure layer — all User / RefreshToken persistence. */
@@ -16,9 +21,19 @@ function assertDbReady(): void {
 export interface CreateUserData {
   name: string;
   email: string;
-  passwordHash: string;
+  /** Optional — Google-only users sign up without one. */
+  passwordHash?: string;
   role: UserRole;
-  emailVerifyTokenHash: string;
+  /** Optional — Google-verified emails skip the verify-link flow,
+   *  so no token is issued. */
+  emailVerifyTokenHash?: string;
+  emailVerified?: boolean;
+  avatarUrl?: string;
+  /** Identities to link at creation time (Google's `sub` etc.). */
+  identities?: {
+    provider: IdentityProvider;
+    providerUserId: string;
+  }[];
   /** Browser Origin of the registration request, used later as the
    *  fallback base URL for background-flow emails. */
   lastOrigin?: string;
@@ -60,7 +75,49 @@ export const authRepository = {
 
   async createUser(data: CreateUserData): Promise<UserDoc> {
     assertDbReady();
-    return UserModel.create(data);
+    return UserModel.create({
+      ...data,
+      identities: (data.identities ?? []).map((i) => ({
+        provider: i.provider,
+        providerUserId: i.providerUserId,
+        linkedAt: new Date(),
+      })),
+    });
+  },
+
+  /** Find a user by their federated identity (provider + providerUserId). */
+  async findUserByIdentity(
+    provider: IdentityProvider,
+    providerUserId: string,
+  ): Promise<UserDoc | null> {
+    assertDbReady();
+    return UserModel.findOne({
+      identities: { $elemMatch: { provider, providerUserId } },
+    }).exec();
+  },
+
+  /** Append an identity to an existing user (idempotent — skips if already linked). */
+  async linkIdentity(
+    userId: Types.ObjectId,
+    provider: IdentityProvider,
+    providerUserId: string,
+  ): Promise<void> {
+    assertDbReady();
+    await UserModel.updateOne(
+      {
+        _id: userId,
+        'identities.provider': { $ne: provider },
+      },
+      {
+        $push: {
+          identities: {
+            provider,
+            providerUserId,
+            linkedAt: new Date(),
+          },
+        },
+      },
+    );
   },
 
   async findUserByVerifyHash(hash: string): Promise<UserDoc | null> {

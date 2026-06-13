@@ -3,12 +3,29 @@ import { Schema, model, type Document, type Types } from 'mongoose';
 export type UserRole = 'buyer' | 'seller' | 'agent' | 'admin';
 export type UserStatus = 'active' | 'blocked';
 
+/** A linked sign-in provider. Each user may have any combination —
+ *  password (implicit, signaled by `passwordHash` being present),
+ *  google (a `google` identity), and any future provider we add. */
+export type IdentityProvider = 'google';
+
+export interface UserIdentity {
+  provider: IdentityProvider;
+  /** The provider's stable user id (`sub` for Google ID tokens). */
+  providerUserId: string;
+  linkedAt: Date;
+}
+
 export interface UserDoc extends Document {
   _id: Types.ObjectId;
   name: string;
   email: string;
-  /** bcrypt hash — `select: false`, so it is never returned unless requested. */
-  passwordHash: string;
+  /** bcrypt hash — `select: false`, so it is never returned unless requested.
+   *  OPTIONAL because a user can be Google-only and have no password set. */
+  passwordHash?: string;
+  /** Federated sign-in identities. An empty array means the user only
+   *  has a password (or, more rarely, no working sign-in method at all
+   *  — which the service layer must prevent). */
+  identities: UserIdentity[];
   role: UserRole;
   status: UserStatus;
   emailVerified: boolean;
@@ -43,7 +60,24 @@ const userSchema = new Schema<UserDoc>(
       lowercase: true,
       trim: true,
     },
-    passwordHash: { type: String, required: true, select: false },
+    passwordHash: { type: String, select: false },
+    identities: {
+      type: [
+        new Schema<UserIdentity>(
+          {
+            provider: {
+              type: String,
+              enum: ['google'],
+              required: true,
+            },
+            providerUserId: { type: String, required: true, trim: true },
+            linkedAt: { type: Date, default: () => new Date() },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     role: {
       type: String,
       enum: ['buyer', 'seller', 'agent', 'admin'],
@@ -71,5 +105,9 @@ const userSchema = new Schema<UserDoc>(
   },
   { timestamps: true },
 );
+
+/* Lets us look up a federated identity in O(log n) without a collection
+ * scan — critical on the Google callback hot path. */
+userSchema.index({ 'identities.provider': 1, 'identities.providerUserId': 1 });
 
 export const UserModel = model<UserDoc>('User', userSchema);

@@ -133,8 +133,14 @@ export const authService = {
     ctx: { origin?: string | null } = {},
   ): Promise<AuthIssue> {
     const user = await authRepository.findUserByEmail(input.email, true);
-    // Same error whether the email or the password is wrong (no enumeration).
-    if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
+    /* Same error whether the email or the password is wrong (no
+     * enumeration). Also a Google-only account has no passwordHash —
+     * we want it to land here too rather than throw a 500. */
+    if (
+      !user ||
+      !user.passwordHash ||
+      !(await bcrypt.compare(input.password, user.passwordHash))
+    ) {
       throw new UnauthorizedError('Invalid email or password');
     }
     if (user.status === 'blocked') {
@@ -257,9 +263,15 @@ export const authService = {
     const user = await authRepository.findUserByIdWithPassword(userId);
     if (!user) throw new UnauthorizedError('Session is no longer valid');
 
-    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!ok) {
-      throw new UnauthorizedError('Current password is incorrect');
+    /* Google-only users have no password yet — "change password"
+     * becomes "set password" for them, skipping the currentPassword
+     * compare. Treat an empty `currentPassword` from the form as
+     * acceptable in that case; require it otherwise. */
+    if (user.passwordHash) {
+      const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!ok) {
+        throw new UnauthorizedError('Current password is incorrect');
+      }
     }
     user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await user.save();
@@ -293,6 +305,98 @@ export const authService = {
    * previously logged in elsewhere. The stored value is also refreshed
    * so any background email that fires next uses the new domain too.
    */
+  /**
+   * Sign in (or register) a user via a verified Google identity.
+   *
+   * Resolution order:
+   *  1. Existing user with this google identity → straight sign-in.
+   *  2. Existing user with this email, IF Google says the email is
+   *     verified → silently link the identity, then sign in. Without
+   *     that `email_verified === true` check this is an
+   *     account-takeover path, so we refuse to link otherwise and
+   *     surface a clear error.
+   *  3. Brand-new user → create with no password, emailVerified=true,
+   *     identity attached.
+   */
+  async loginWithGoogle(
+    profile: {
+      sub: string;
+      email: string;
+      emailVerified: boolean;
+      name?: string;
+      picture?: string;
+    },
+    ctx: { origin?: string | null } = {},
+  ): Promise<AuthIssue> {
+    const normalizedEmail = profile.email.toLowerCase();
+
+    /* 1. Already-linked Google account. */
+    let user = await authRepository.findUserByIdentity('google', profile.sub);
+
+    /* 2. Same email, but no Google identity yet. */
+    if (!user) {
+      const byEmail = await authRepository.findUserByEmail(normalizedEmail);
+      if (byEmail) {
+        if (!profile.emailVerified) {
+          throw new ForbiddenError(
+            'Google reports this email as unverified — sign in with your password instead, then link Google from your profile.',
+          );
+        }
+        if (byEmail.status === 'blocked') {
+          throw new ForbiddenError('This account has been suspended');
+        }
+        await authRepository.linkIdentity(
+          byEmail._id as Types.ObjectId,
+          'google',
+          profile.sub,
+        );
+        /* If the local account was created via password and never
+         * verified — Google's verification is good enough. */
+        if (!byEmail.emailVerified) {
+          byEmail.emailVerified = true;
+        }
+        /* Pick up the avatar if we don't have one yet. */
+        if (!byEmail.avatarUrl && profile.picture) {
+          byEmail.avatarUrl = profile.picture;
+        }
+        if (ctx.origin && byEmail.lastOrigin !== ctx.origin) {
+          byEmail.lastOrigin = ctx.origin;
+        }
+        await byEmail.save();
+        user = byEmail;
+      }
+    }
+
+    /* 3. Brand-new user — Google handled email verification for us. */
+    if (!user) {
+      user = await authRepository.createUser({
+        name: profile.name || normalizedEmail.split('@')[0] || normalizedEmail,
+        email: normalizedEmail,
+        role: 'buyer',
+        emailVerified: true,
+        avatarUrl: profile.picture,
+        identities: [{ provider: 'google', providerUserId: profile.sub }],
+        lastOrigin: ctx.origin ?? undefined,
+      });
+      void sendWelcomeEmail({
+        to: user.email,
+        name: user.name,
+        requestOrigin: ctx.origin,
+      });
+      logger.info(
+        { email: user.email, via: 'google' },
+        'user registered via google',
+      );
+    } else if (user.status === 'blocked') {
+      throw new ForbiddenError('This account has been suspended');
+    } else if (ctx.origin && user.lastOrigin !== ctx.origin) {
+      user.lastOrigin = ctx.origin;
+      await user.save();
+    }
+
+    return issueTokens(user, newTokenFamily());
+  },
+
   async resendVerification(
     userId: string,
     ctx: { origin?: string | null } = {},
