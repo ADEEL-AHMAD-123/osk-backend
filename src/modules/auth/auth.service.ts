@@ -107,19 +107,20 @@ export const authService = {
     /* Deliver the verification link. Send is fire-and-forget — a delivery
      * blip must not block registration. The email module handles its own
      * error logging. The dev console adapter still surfaces the token in
-     * pino so it's testable without a real mail server. */
+     * pino so it's testable without a real mail server.
+     *
+     * The verify email already opens with a welcoming greeting and a
+     * single clear action ("Verify email"), so we deliberately do NOT
+     * send a separate welcome email at password signup — two messages
+     * arriving at the same moment is confusing and tempts users into
+     * clicking the welcome CTA (which goes to /dashboard) instead of
+     * the verify link, leaving them stuck behind the "verify your
+     * email" banner. Google signups still get a welcome email because
+     * they're auto-verified and never receive a verify link. */
     void sendVerifyEmail({
       to: user.email,
       name: user.name,
       token: verify.token,
-      requestOrigin: ctx.origin,
-    });
-    /* Welcome on top of the verify link — they're conceptually separate
-     * (verify proves email ownership, welcome introduces the product),
-     * so they're sent as two messages rather than merged. */
-    void sendWelcomeEmail({
-      to: user.email,
-      name: user.name,
       requestOrigin: ctx.origin,
     });
     /* In-app welcome notification so the bell shows a 1 the first
