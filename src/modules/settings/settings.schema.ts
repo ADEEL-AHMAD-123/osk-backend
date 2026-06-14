@@ -75,6 +75,50 @@ const legalPatchSchema = z
   })
   .partial();
 
+/**
+ * About-page content patch. Sub-sections (header / values / process /
+ * cta) are fully partial so the admin can change a single field
+ * without re-sending the whole document. `items` arrays cap at 12 to
+ * keep the page readable and to bound the DB doc size.
+ */
+const aboutItemSchema = z.object({
+  title: z.string().max(160),
+  body: z.string().max(2000),
+});
+
+const aboutPatchSchema = z
+  .object({
+    header: z
+      .object({
+        eyebrow: z.string().max(80),
+        titlePrefix: z.string().max(120),
+        titleEmphasis: z.string().max(120),
+        lede: z.string().max(1000),
+      })
+      .partial(),
+    values: z
+      .object({
+        eyebrow: z.string().max(80),
+        title: z.string().max(160),
+        items: z.array(aboutItemSchema).max(12),
+      })
+      .partial(),
+    process: z
+      .object({
+        eyebrow: z.string().max(80),
+        title: z.string().max(160),
+        items: z.array(aboutItemSchema).max(12),
+      })
+      .partial(),
+    cta: z
+      .object({
+        title: z.string().max(160),
+        body: z.string().max(1000),
+      })
+      .partial(),
+  })
+  .partial();
+
 export const settingsPatchSchema = z
   .object({
     activeTheme: z.enum(THEME_NAMES),
@@ -86,6 +130,7 @@ export const settingsPatchSchema = z
     geo: geoPatchSchema,
     homeStats: homeStatsPatchSchema,
     legal: legalPatchSchema,
+    about: aboutPatchSchema,
   })
   .partial();
 

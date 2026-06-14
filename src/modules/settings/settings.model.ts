@@ -109,6 +109,46 @@ export interface SiteSettingsCors {
   allowAll: boolean;
 }
 
+/**
+ * About-page content. The page used to ship with hardcoded copy; this
+ * shape exposes every visible string so the admin can rewrite the
+ * marketing without a deploy.
+ *
+ *  - `header.*`        the eyebrow / title / lede above the stats grid
+ *  - `values.*`        the "What we believe" cards (3 by default)
+ *  - `process.*`       the new "How it works" numbered steps
+ *  - `cta.*`           the bottom call-to-action box
+ *
+ * Stats stay on `homeStats` (same content as the home trust strip).
+ */
+export interface SiteSettingsAboutItem {
+  title: string;
+  body: string;
+}
+
+export interface SiteSettingsAbout {
+  header: {
+    eyebrow: string;
+    titlePrefix: string;
+    titleEmphasis: string;
+    lede: string;
+  };
+  values: {
+    eyebrow: string;
+    title: string;
+    items: SiteSettingsAboutItem[];
+  };
+  process: {
+    eyebrow: string;
+    title: string;
+    items: SiteSettingsAboutItem[];
+  };
+  cta: {
+    title: string;
+    body: string;
+  };
+}
+
 export interface SiteSettingsDoc extends Document {
   _id: Types.ObjectId;
   /** Marker so we can singleton-enforce via a unique index. */
@@ -124,6 +164,7 @@ export interface SiteSettingsDoc extends Document {
   homeStats: SiteSettingsStat[];
   legal: SiteSettingsLegal;
   cors: SiteSettingsCors;
+  about: SiteSettingsAbout;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -199,6 +240,64 @@ const corsSchema = new Schema<SiteSettingsCors>(
   { _id: false },
 );
 
+const aboutItemSchema = new Schema<SiteSettingsAboutItem>(
+  {
+    title: { type: String, default: '', trim: true, maxlength: 160 },
+    body: { type: String, default: '', trim: true, maxlength: 2000 },
+  },
+  { _id: false },
+);
+
+const aboutSchema = new Schema<SiteSettingsAbout>(
+  {
+    header: {
+      type: new Schema(
+        {
+          eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+          titlePrefix: { type: String, default: '', trim: true, maxlength: 120 },
+          titleEmphasis: { type: String, default: '', trim: true, maxlength: 120 },
+          lede: { type: String, default: '', trim: true, maxlength: 1000 },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+    values: {
+      type: new Schema(
+        {
+          eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+          title: { type: String, default: '', trim: true, maxlength: 160 },
+          items: { type: [aboutItemSchema], default: [] },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+    process: {
+      type: new Schema(
+        {
+          eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+          title: { type: String, default: '', trim: true, maxlength: 160 },
+          items: { type: [aboutItemSchema], default: [] },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+    cta: {
+      type: new Schema(
+        {
+          title: { type: String, default: '', trim: true, maxlength: 160 },
+          body: { type: String, default: '', trim: true, maxlength: 1000 },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+  },
+  { _id: false },
+);
+
 const settingsSchema = new Schema<SiteSettingsDoc>(
   {
     singletonKey: {
@@ -250,6 +349,10 @@ const settingsSchema = new Schema<SiteSettingsDoc>(
     legal: {
       type: legalSchema,
       default: () => DEFAULT_LEGAL,
+    },
+    about: {
+      type: aboutSchema,
+      default: () => DEFAULT_ABOUT,
     },
   },
   { timestamps: true },
@@ -323,6 +426,63 @@ We may suspend or terminate accounts that violate these terms, abuse the platfor
 The platform is provided "as is". To the maximum extent permitted by law, we exclude all warranties and limit our liability.`,
   privacyUpdatedAt: '',
   termsUpdatedAt: '',
+};
+
+/**
+ * Default copy for the About page. Country-neutral; the admin can
+ * rewrite anything from /admin/settings.
+ */
+export const DEFAULT_ABOUT: SiteSettingsAbout = {
+  header: {
+    eyebrow: 'About us',
+    titlePrefix: 'A better way to',
+    titleEmphasis: 'find a home.',
+    lede: 'We bring together owners, verified agents and serious buyers — and we keep the experience quiet, honest, and direct.',
+  },
+  values: {
+    eyebrow: 'What we believe',
+    title: 'Three things shape every page',
+    items: [
+      {
+        title: 'Curated, not crowded',
+        body: 'Every listing is reviewed by a person before it goes live. We keep the catalog tight so what you find is worth your time.',
+      },
+      {
+        title: 'Direct lines',
+        body: 'No spam middlemen. You talk to owners and verified agents by chat, call, WhatsApp or email — your call.',
+      },
+      {
+        title: 'Privacy first',
+        body: 'Your details stay with the listing owner. Numbers are masked, emails are relayed, consent is logged.',
+      },
+    ],
+  },
+  process: {
+    eyebrow: 'How it works',
+    title: 'Four quiet steps from search to move-in',
+    items: [
+      {
+        title: 'Browse curated inventory',
+        body: 'Filter by price, neighborhood, or amenities — every listing is hand-reviewed before it appears.',
+      },
+      {
+        title: 'Connect directly',
+        body: 'Reach the owner or agent on the channel you prefer: chat, call, WhatsApp, or email relay.',
+      },
+      {
+        title: 'Schedule on your terms',
+        body: 'Book a viewing time that works for you — no back-and-forth, no pressure.',
+      },
+      {
+        title: 'Close with confidence',
+        body: 'Move forward with verified counterparties and a clear paper trail from first contact to handover.',
+      },
+    ],
+  },
+  cta: {
+    title: 'List a property',
+    body: 'Reach serious buyers — and stay in control of how people contact you.',
+  },
 };
 
 /* Empty defaults: a fresh install starts with no contact details,

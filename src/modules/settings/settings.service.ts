@@ -1,4 +1,5 @@
 import {
+  DEFAULT_ABOUT,
   DEFAULT_APP_LINKS,
   DEFAULT_CONTACT,
   DEFAULT_GEO,
@@ -6,6 +7,8 @@ import {
   DEFAULT_LEGAL,
   SiteSettingsModel,
   THEME_NAMES,
+  type SiteSettingsAbout,
+  type SiteSettingsAboutItem,
   type SiteSettingsAppLinks,
   type SiteSettingsContact,
   type SiteSettingsDoc,
@@ -26,6 +29,7 @@ export interface SiteSettingsDTO {
   geo: SiteSettingsGeo;
   homeStats: SiteSettingsStat[];
   legal: SiteSettingsLegal;
+  about: SiteSettingsAbout;
   updatedAt: string;
 }
 
@@ -50,7 +54,37 @@ function toDTO(doc: SiteSettingsDoc): SiteSettingsDTO {
         ? doc.homeStats
         : DEFAULT_HOME_STATS,
     legal: doc.legal ?? DEFAULT_LEGAL,
+    /* about lands here as a Mongoose subdoc — surface any missing
+     * sub-sections through the defaults so the public About page
+     * never has to render null. */
+    about: mergeAbout(doc.about),
     updatedAt: doc.updatedAt.toISOString(),
+  };
+}
+
+/** Merge a (possibly partial) stored about doc against the defaults
+ *  so older singletons that pre-date this field still render. */
+function mergeAbout(stored: SiteSettingsAbout | undefined): SiteSettingsAbout {
+  if (!stored) return DEFAULT_ABOUT;
+  return {
+    header: { ...DEFAULT_ABOUT.header, ...(stored.header ?? {}) },
+    values: {
+      eyebrow: stored.values?.eyebrow ?? DEFAULT_ABOUT.values.eyebrow,
+      title: stored.values?.title ?? DEFAULT_ABOUT.values.title,
+      items:
+        Array.isArray(stored.values?.items) && stored.values!.items.length > 0
+          ? stored.values!.items
+          : DEFAULT_ABOUT.values.items,
+    },
+    process: {
+      eyebrow: stored.process?.eyebrow ?? DEFAULT_ABOUT.process.eyebrow,
+      title: stored.process?.title ?? DEFAULT_ABOUT.process.title,
+      items:
+        Array.isArray(stored.process?.items) && stored.process!.items.length > 0
+          ? stored.process!.items
+          : DEFAULT_ABOUT.process.items,
+    },
+    cta: { ...DEFAULT_ABOUT.cta, ...(stored.cta ?? {}) },
   };
 }
 
@@ -66,6 +100,20 @@ export interface SettingsPatch {
   /** Trust-strip stats — exactly four entries when sent. */
   homeStats?: SiteSettingsStat[];
   legal?: Partial<SiteSettingsLegal>;
+  about?: {
+    header?: Partial<SiteSettingsAbout['header']>;
+    values?: {
+      eyebrow?: string;
+      title?: string;
+      items?: SiteSettingsAboutItem[];
+    };
+    process?: {
+      eyebrow?: string;
+      title?: string;
+      items?: SiteSettingsAboutItem[];
+    };
+    cta?: Partial<SiteSettingsAbout['cta']>;
+  };
 }
 
 export const settingsService = {
@@ -156,6 +204,46 @@ export const settingsService = {
     if (patch.legal) {
       for (const [k, v] of Object.entries(patch.legal)) {
         if (typeof v === 'string') update[`legal.${k}`] = v.trim();
+      }
+    }
+    /* About — flat dot-notation writes per leaf field so an admin
+     * editing only one section doesn't blow away the others. The
+     * `items` arrays are written as a whole (re-ordering / add /
+     * remove only makes sense atomically). */
+    if (patch.about) {
+      if (patch.about.header) {
+        for (const [k, v] of Object.entries(patch.about.header)) {
+          if (typeof v === 'string') update[`about.header.${k}`] = v;
+        }
+      }
+      if (patch.about.values) {
+        if (typeof patch.about.values.eyebrow === 'string')
+          update['about.values.eyebrow'] = patch.about.values.eyebrow;
+        if (typeof patch.about.values.title === 'string')
+          update['about.values.title'] = patch.about.values.title;
+        if (Array.isArray(patch.about.values.items)) {
+          update['about.values.items'] = patch.about.values.items.map((it) => ({
+            title: it.title.trim(),
+            body: it.body.trim(),
+          }));
+        }
+      }
+      if (patch.about.process) {
+        if (typeof patch.about.process.eyebrow === 'string')
+          update['about.process.eyebrow'] = patch.about.process.eyebrow;
+        if (typeof patch.about.process.title === 'string')
+          update['about.process.title'] = patch.about.process.title;
+        if (Array.isArray(patch.about.process.items)) {
+          update['about.process.items'] = patch.about.process.items.map((it) => ({
+            title: it.title.trim(),
+            body: it.body.trim(),
+          }));
+        }
+      }
+      if (patch.about.cta) {
+        for (const [k, v] of Object.entries(patch.about.cta)) {
+          if (typeof v === 'string') update[`about.cta.${k}`] = v;
+        }
       }
     }
 

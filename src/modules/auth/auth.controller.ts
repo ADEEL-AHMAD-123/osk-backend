@@ -78,7 +78,21 @@ export const register: RequestHandler = async (req, res) => {
 /** POST /auth/login */
 export const login: RequestHandler = async (req, res) => {
   const input = loginSchema.parse(req.body);
-  const { result, refreshToken } = await authService.login(input, {
+  /* Captcha gate — same pattern as register. `verifyToken` returns
+   * true when captcha is disabled, so this branch is also the no-op
+   * for environments without captcha configured. */
+  const captchaOk = await captchaService.verifyToken(
+    input.captchaToken,
+    (req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ||
+      req.ip) ?? null,
+  );
+  if (!captchaOk) {
+    throw new ForbiddenError(
+      'We couldn’t verify the captcha. Refresh the page and try again.',
+    );
+  }
+  const { captchaToken: _t, ...loginInput } = input;
+  const { result, refreshToken } = await authService.login(loginInput, {
     origin: req.headers.origin ?? null,
   });
   setRefreshCookie(res, refreshToken);

@@ -21,6 +21,10 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, 'Password is required'),
+  /** Optional captcha token from the sign-in form. The controller
+   *  decides whether to require it based on the admin's captcha
+   *  settings (same gating as the register endpoint). */
+  captchaToken: z.string().max(4000).optional(),
 });
 
 export const forgotPasswordSchema = z.object({
