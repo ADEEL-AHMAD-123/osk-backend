@@ -17,6 +17,7 @@ import { InquiryModel } from '../inquiries/inquiry.model';
 import { ReviewModel } from '../reviews/review.model';
 import { ThreadModel } from '../threads/thread.model';
 import { MessageModel } from '../threads/message.model';
+import { notificationService } from '../notifications/notification.service';
 import { PropertyModel } from './property.model';
 import { propertyRepository, type OwnerAnalytics } from './property.repository';
 import { toPropertyDTO } from './property.mapper';
@@ -343,6 +344,36 @@ export const propertyService = {
         logger.warn({ err, decision }, 'property review email skipped');
       }
     })();
+
+    /* In-app notification — separate side effect from the email so a
+     * delivery blip on either channel doesn't take the other down. The
+     * approved href points at the public listing so the seller can
+     * see (and share) it live; the rejected href points at the
+     * dashboard listing row so they can read the full reason and edit
+     * before re-submitting. */
+    void notificationService
+      .notify({
+        userId: doc.owner,
+        type: decision === 'approve' ? 'property.approved' : 'property.rejected',
+        title:
+          decision === 'approve'
+            ? `Listing approved: ${doc.title}`
+            : `Listing rejected: ${doc.title}`,
+        body:
+          decision === 'approve'
+            ? 'Your listing is live and visible in search results.'
+            : doc.rejectionReason
+              ? `Reason: ${doc.rejectionReason}`
+              : 'The reviewer didn’t include a written reason — edit and resubmit.',
+        href:
+          decision === 'approve'
+            ? `/property/${doc.slug}`
+            : `/dashboard/listings`,
+        meta: { propertyId: doc._id.toString(), slug: doc.slug },
+      })
+      .catch((err) =>
+        logger.warn({ err, decision }, 'property review notification skipped'),
+      );
 
     return toPropertyDTO(doc);
   },

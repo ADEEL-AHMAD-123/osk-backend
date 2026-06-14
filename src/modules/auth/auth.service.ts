@@ -10,6 +10,7 @@ import { isProd } from '../../config/env';
 import { authRepository } from './auth.repository';
 import { sendPasswordResetEmail, sendVerifyEmail } from './auth.emails';
 import { sendWelcomeEmail } from '../../shared/email/notificationEmails';
+import { notificationService } from '../notifications/notification.service';
 import {
   createOpaqueToken,
   createRefreshToken,
@@ -121,6 +122,17 @@ export const authService = {
       name: user.name,
       requestOrigin: ctx.origin,
     });
+    /* In-app welcome notification so the bell shows a 1 the first
+     * time the new user opens their dashboard. */
+    void notificationService
+      .notify({
+        userId: user._id,
+        type: 'user.welcome',
+        title: `Welcome to OSK, ${user.name.split(' ')[0] ?? user.name}`,
+        body: 'Browse listings, save favourites, or list your first property — your dashboard is ready.',
+        href: '/dashboard',
+      })
+      .catch((err) => logger.warn({ err }, 'welcome notification skipped'));
     logger.info(
       { email: user.email, verifyToken: isProd ? undefined : verify.token },
       'email verification token issued',
@@ -232,6 +244,21 @@ export const authService = {
     user.emailVerified = true;
     user.emailVerifyTokenHash = undefined;
     await user.save();
+
+    /* Drop an in-app note so the bell explicitly says "verified" —
+     * useful since the verify flow returns to a marketing page and
+     * the user might wonder whether anything actually happened. */
+    void notificationService
+      .notify({
+        userId: user._id,
+        type: 'user.email-verified',
+        title: 'Email verified',
+        body: 'You can now sign in and use every part of OSK.',
+        href: '/dashboard',
+      })
+      .catch((err) =>
+        logger.warn({ err }, 'email-verified notification skipped'),
+      );
   },
 
   /** Always resolves — never reveals whether an account exists. */

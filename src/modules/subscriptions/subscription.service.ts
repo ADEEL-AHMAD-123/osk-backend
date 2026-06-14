@@ -13,6 +13,7 @@ import {
   sendSubscriptionActivatedEmail,
   sendSubscriptionCancelledEmail,
 } from '../../shared/email/notificationEmails';
+import { notificationService } from '../notifications/notification.service';
 import { logger } from '../../config/logger';
 import { SubscriptionModel, type SubscriptionDoc } from './subscription.model';
 import { toSubscriptionDTO } from './subscription.mapper';
@@ -301,6 +302,21 @@ export const subscriptionService = {
       }
     })();
 
+    /* In-app notification — points at the subscription panel so the
+     * seller can see plan + next-bill date in one click. */
+    void notificationService
+      .notify({
+        userId: doc.user,
+        type: 'subscription.activated',
+        title: `${plan?.name ?? doc.planSlug} plan activated`,
+        body: `You’re all set until ${doc.currentPeriodEnd.toDateString()}.`,
+        href: '/dashboard/subscription',
+        meta: { subscriptionId: doc._id.toString(), planSlug: doc.planSlug },
+      })
+      .catch((err) =>
+        logger.warn({ err }, 'subscription activation notification skipped'),
+      );
+
     return doc;
   },
 
@@ -342,6 +358,23 @@ export const subscriptionService = {
         logger.warn({ err }, 'subscription cancel email skipped');
       }
     })();
+
+    /* In-app notification mirroring the email — clear "no surprise"
+     * paper trail of the cancellation right in the bell icon. */
+    void notificationService
+      .notify({
+        userId: doc.user,
+        type: 'subscription.cancelled',
+        title: 'Subscription cancelled',
+        body: doc.currentPeriodEnd
+          ? `You’ll keep access until ${doc.currentPeriodEnd.toDateString()}.`
+          : 'Your subscription has been cancelled.',
+        href: '/dashboard/subscription',
+        meta: { subscriptionId: doc._id.toString(), planSlug: doc.planSlug },
+      })
+      .catch((err) =>
+        logger.warn({ err }, 'subscription cancel notification skipped'),
+      );
 
     return doc;
   },

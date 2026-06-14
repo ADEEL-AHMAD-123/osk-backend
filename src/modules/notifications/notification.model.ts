@@ -5,6 +5,12 @@ export type NotificationType =
   | 'inquiry.callback'
   | 'property.published'
   | 'property.review'
+  | 'property.approved'
+  | 'property.rejected'
+  | 'subscription.activated'
+  | 'subscription.cancelled'
+  | 'user.welcome'
+  | 'user.email-verified'
   | 'system';
 
 export interface NotificationDoc extends Document {
@@ -37,6 +43,12 @@ const notificationSchema = new Schema<NotificationDoc>(
         'inquiry.callback',
         'property.published',
         'property.review',
+        'property.approved',
+        'property.rejected',
+        'subscription.activated',
+        'subscription.cancelled',
+        'user.welcome',
+        'user.email-verified',
         'system',
       ],
       required: true,
