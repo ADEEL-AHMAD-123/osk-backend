@@ -221,11 +221,27 @@ export const settingsService = {
      * about + defaults, then $set the entire `about` blob atomically.
      * That always autovivifies the parent and runs schema casting
      * through aboutSchema cleanly. */
+    /* For everything OTHER than `about`, use findOneAndUpdate with
+     * dot-notation $set. That's been working for months and we don't
+     * want to refactor working code. */
+    const doc = await SiteSettingsModel.findOneAndUpdate(
+      { singletonKey: 'default' },
+      { $set: update, $setOnInsert: { singletonKey: 'default' } },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    ).exec();
+
+    /* `about` gets a second pass via load + mutate + .save() because
+     *  findOneAndUpdate with nested-subdocument $set has bitten us:
+     *  when the existing singleton doc has `about: undefined` (any
+     *  singleton created before this field was added in code), even
+     *  writing the entire about blob through $set can silently no-op
+     *  because Mongoose's path resolver doesn't always autovivify a
+     *  brand-new nested subdoc reliably. Loading the doc, assigning
+     *  to `doc.about` directly, and calling `.save()` always works —
+     *  it runs Mongoose's full schema casting and we get back the
+     *  document in the exact state we set it. */
     if (patch.about) {
-      const current = await SiteSettingsModel.findOne({
-        singletonKey: 'default',
-      }).exec();
-      const base = mergeAbout(current?.about);
+      const base = mergeAbout(doc.about);
       const merged: SiteSettingsAbout = {
         header: {
           eyebrow: patch.about.header?.eyebrow ?? base.header.eyebrow,
@@ -260,14 +276,14 @@ export const settingsService = {
           body: patch.about.cta?.body ?? base.cta.body,
         },
       };
-      update.about = merged;
+      doc.about = merged;
+      /* `markModified` is belt-and-suspenders for nested subdocs —
+       * Mongoose's change tracker doesn't always notice replacements
+       * of a whole subdoc when the path was undefined to begin with. */
+      doc.markModified('about');
+      await doc.save();
     }
 
-    const doc = await SiteSettingsModel.findOneAndUpdate(
-      { singletonKey: 'default' },
-      { $set: update, $setOnInsert: { singletonKey: 'default' } },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    ).exec();
     return toDTO(doc);
   },
 
