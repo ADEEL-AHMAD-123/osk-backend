@@ -284,7 +284,9 @@ export const settingsService = {
       await doc.save();
     }
 
-    return toDTO(doc);
+    // Return a fresh snapshot so callers never receive stale nested data.
+    const latest = await SiteSettingsModel.findOne({ singletonKey: 'default' }).exec();
+    return toDTO(latest ?? doc);
   },
 
   /**
