@@ -206,45 +206,61 @@ export const settingsService = {
         if (typeof v === 'string') update[`legal.${k}`] = v.trim();
       }
     }
-    /* About — flat dot-notation writes per leaf field so an admin
-     * editing only one section doesn't blow away the others. The
-     * `items` arrays are written as a whole (re-ordering / add /
-     * remove only makes sense atomically). */
+    /* About — write as a whole sub-document so Mongoose's nested
+     * subdoc casting actually runs.
+     *
+     * The dot-notation pattern we use for `contact`, `appLinks`,
+     * `legal` etc. works because those subdocs already exist on the
+     * singleton (they were defined long ago). For an `about` field
+     * added later, an existing singleton has `about: undefined`, and
+     * Mongoose's `$set: { 'about.values.items': [...] }` against a
+     * missing parent silently no-ops without throwing — that's the
+     * bug that made admin saves look successful but not stick.
+     *
+     * The fix: deep-merge the partial patch against the current
+     * about + defaults, then $set the entire `about` blob atomically.
+     * That always autovivifies the parent and runs schema casting
+     * through aboutSchema cleanly. */
     if (patch.about) {
-      if (patch.about.header) {
-        for (const [k, v] of Object.entries(patch.about.header)) {
-          if (typeof v === 'string') update[`about.header.${k}`] = v;
-        }
-      }
-      if (patch.about.values) {
-        if (typeof patch.about.values.eyebrow === 'string')
-          update['about.values.eyebrow'] = patch.about.values.eyebrow;
-        if (typeof patch.about.values.title === 'string')
-          update['about.values.title'] = patch.about.values.title;
-        if (Array.isArray(patch.about.values.items)) {
-          update['about.values.items'] = patch.about.values.items.map((it) => ({
-            title: it.title.trim(),
-            body: it.body.trim(),
-          }));
-        }
-      }
-      if (patch.about.process) {
-        if (typeof patch.about.process.eyebrow === 'string')
-          update['about.process.eyebrow'] = patch.about.process.eyebrow;
-        if (typeof patch.about.process.title === 'string')
-          update['about.process.title'] = patch.about.process.title;
-        if (Array.isArray(patch.about.process.items)) {
-          update['about.process.items'] = patch.about.process.items.map((it) => ({
-            title: it.title.trim(),
-            body: it.body.trim(),
-          }));
-        }
-      }
-      if (patch.about.cta) {
-        for (const [k, v] of Object.entries(patch.about.cta)) {
-          if (typeof v === 'string') update[`about.cta.${k}`] = v;
-        }
-      }
+      const current = await SiteSettingsModel.findOne({
+        singletonKey: 'default',
+      }).exec();
+      const base = mergeAbout(current?.about);
+      const merged: SiteSettingsAbout = {
+        header: {
+          eyebrow: patch.about.header?.eyebrow ?? base.header.eyebrow,
+          titlePrefix:
+            patch.about.header?.titlePrefix ?? base.header.titlePrefix,
+          titleEmphasis:
+            patch.about.header?.titleEmphasis ?? base.header.titleEmphasis,
+          lede: patch.about.header?.lede ?? base.header.lede,
+        },
+        values: {
+          eyebrow: patch.about.values?.eyebrow ?? base.values.eyebrow,
+          title: patch.about.values?.title ?? base.values.title,
+          items: Array.isArray(patch.about.values?.items)
+            ? patch.about.values!.items.map((it) => ({
+                title: it.title.trim(),
+                body: it.body.trim(),
+              }))
+            : base.values.items,
+        },
+        process: {
+          eyebrow: patch.about.process?.eyebrow ?? base.process.eyebrow,
+          title: patch.about.process?.title ?? base.process.title,
+          items: Array.isArray(patch.about.process?.items)
+            ? patch.about.process!.items.map((it) => ({
+                title: it.title.trim(),
+                body: it.body.trim(),
+              }))
+            : base.process.items,
+        },
+        cta: {
+          title: patch.about.cta?.title ?? base.cta.title,
+          body: patch.about.cta?.body ?? base.cta.body,
+        },
+      };
+      update.about = merged;
     }
 
     const doc = await SiteSettingsModel.findOneAndUpdate(
