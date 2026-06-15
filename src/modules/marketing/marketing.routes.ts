@@ -221,7 +221,25 @@ const limiter = rateLimit({
 marketingRoutes.post('/subscribe', limiter, asyncHandler(subscribe));
 
 export const marketingAdminRoutes = Router();
-marketingAdminRoutes.use(authenticate, authorize('admin'));
-marketingAdminRoutes.get('/', asyncHandler(listSubscribers));
-marketingAdminRoutes.get('/export.csv', asyncHandler(exportCsv));
-marketingAdminRoutes.delete('/:id', asyncHandler(unsubscribeSubscriber));
+/* Explicit middleware per-route rather than `router.use(authenticate,
+ * authorize('admin'))` — the per-route form matches the pattern used
+ * elsewhere in the admin module and avoids any Router.use ordering
+ * surprises that have bitten us before. */
+marketingAdminRoutes.get(
+  '/',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(listSubscribers),
+);
+marketingAdminRoutes.get(
+  '/export.csv',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(exportCsv),
+);
+marketingAdminRoutes.delete(
+  '/:id',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(unsubscribeSubscriber),
+);
