@@ -248,51 +248,46 @@ const aboutItemSchema = new Schema<SiteSettingsAboutItem>(
   { _id: false },
 );
 
+/* ─── About sub-sections as plain nested paths ────────────────────────
+ *
+ * IMPORTANT: these sections are declared as plain nested-object paths
+ * (no `new Schema(...)` wrapper). Earlier they were sub-Schemas, which
+ * Mongoose treats as separate sub-subdocuments with their own cast
+ * pipeline — and that pipeline was silently dropping string-field
+ * replacements when the parent subdoc had already been instantiated.
+ * The result was that `doc.about = mergedAbout` followed by `.save()`
+ * persisted only the items arrays (whose change tracker is per-array,
+ * not per-subdoc) and silently no-op'd every string field on
+ * `header`, `values`, `process`, and `cta`.
+ *
+ * Plain nested-path declarations are documented as the safer pattern
+ * for content that's written as a single blob from an admin form:
+ * Mongoose flattens them into the parent and tracks each leaf
+ * normally, so string changes always propagate to `save()`.
+ *
+ * The `aboutItemSchema` array IS still a sub-schema because items
+ * are reordered/added/removed and need per-element identity. */
 const aboutSchema = new Schema<SiteSettingsAbout>(
   {
     header: {
-      type: new Schema(
-        {
-          eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
-          titlePrefix: { type: String, default: '', trim: true, maxlength: 120 },
-          titleEmphasis: { type: String, default: '', trim: true, maxlength: 120 },
-          lede: { type: String, default: '', trim: true, maxlength: 1000 },
-        },
-        { _id: false },
-      ),
-      default: () => ({}),
+      eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+      titlePrefix: { type: String, default: '', trim: true, maxlength: 120 },
+      titleEmphasis: { type: String, default: '', trim: true, maxlength: 120 },
+      lede: { type: String, default: '', trim: true, maxlength: 1000 },
     },
     values: {
-      type: new Schema(
-        {
-          eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
-          title: { type: String, default: '', trim: true, maxlength: 160 },
-          items: { type: [aboutItemSchema], default: [] },
-        },
-        { _id: false },
-      ),
-      default: () => ({}),
+      eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+      title: { type: String, default: '', trim: true, maxlength: 160 },
+      items: { type: [aboutItemSchema], default: [] },
     },
     process: {
-      type: new Schema(
-        {
-          eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
-          title: { type: String, default: '', trim: true, maxlength: 160 },
-          items: { type: [aboutItemSchema], default: [] },
-        },
-        { _id: false },
-      ),
-      default: () => ({}),
+      eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+      title: { type: String, default: '', trim: true, maxlength: 160 },
+      items: { type: [aboutItemSchema], default: [] },
     },
     cta: {
-      type: new Schema(
-        {
-          title: { type: String, default: '', trim: true, maxlength: 160 },
-          body: { type: String, default: '', trim: true, maxlength: 1000 },
-        },
-        { _id: false },
-      ),
-      default: () => ({}),
+      title: { type: String, default: '', trim: true, maxlength: 160 },
+      body: { type: String, default: '', trim: true, maxlength: 1000 },
     },
   },
   { _id: false },
