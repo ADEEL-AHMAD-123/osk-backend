@@ -5,6 +5,7 @@ import {
   DEFAULT_GEO,
   DEFAULT_HOME_STATS,
   DEFAULT_LEGAL,
+  DEFAULT_PARTNERS,
   SiteSettingsModel,
   THEME_NAMES,
   type SiteSettingsAbout,
@@ -14,6 +15,8 @@ import {
   type SiteSettingsDoc,
   type SiteSettingsGeo,
   type SiteSettingsLegal,
+  type SiteSettingsPartnerItem,
+  type SiteSettingsPartners,
   type SiteSettingsStat,
   type ThemeName,
 } from './settings.model';
@@ -30,6 +33,7 @@ export interface SiteSettingsDTO {
   homeStats: SiteSettingsStat[];
   legal: SiteSettingsLegal;
   about: SiteSettingsAbout;
+  partners: SiteSettingsPartners;
   updatedAt: string;
 }
 
@@ -58,7 +62,25 @@ function toDTO(doc: SiteSettingsDoc): SiteSettingsDTO {
      * sub-sections through the defaults so the public About page
      * never has to render null. */
     about: mergeAbout(doc.about),
+    partners: mergePartners(doc.partners),
     updatedAt: doc.updatedAt.toISOString(),
+  };
+}
+
+/** Merge a (possibly partial) stored partners doc against the
+ *  defaults so older singletons that pre-date this field still render. */
+function mergePartners(
+  stored: SiteSettingsPartners | undefined,
+): SiteSettingsPartners {
+  if (!stored) return DEFAULT_PARTNERS;
+  return {
+    eyebrow: stored.eyebrow ?? DEFAULT_PARTNERS.eyebrow,
+    title: stored.title ?? DEFAULT_PARTNERS.title,
+    sub: stored.sub ?? DEFAULT_PARTNERS.sub,
+    items:
+      Array.isArray(stored.items) && stored.items.length > 0
+        ? stored.items
+        : DEFAULT_PARTNERS.items,
   };
 }
 
@@ -113,6 +135,12 @@ export interface SettingsPatch {
       items?: SiteSettingsAboutItem[];
     };
     cta?: Partial<SiteSettingsAbout['cta']>;
+  };
+  partners?: {
+    eyebrow?: string;
+    title?: string;
+    sub?: string;
+    items?: SiteSettingsPartnerItem[];
   };
 }
 
@@ -292,6 +320,28 @@ export const settingsService = {
       doc.markModified('about.values');
       doc.markModified('about.process');
       doc.markModified('about.cta');
+      await doc.save();
+    }
+
+    /* Same load+merge+.save() pattern as `about` so partial writes
+     * don't blow away other fields and an existing singleton that
+     * pre-dates the `partners` field gets it autovivified through
+     * full Mongoose casting. */
+    if (patch.partners) {
+      const base = mergePartners(doc.partners);
+      const merged: SiteSettingsPartners = {
+        eyebrow: patch.partners.eyebrow ?? base.eyebrow,
+        title: patch.partners.title ?? base.title,
+        sub: patch.partners.sub ?? base.sub,
+        items: Array.isArray(patch.partners.items)
+          ? patch.partners.items.map((it) => ({
+              name: it.name.trim(),
+              role: it.role.trim(),
+            }))
+          : base.items,
+      };
+      doc.partners = merged;
+      doc.markModified('partners');
       await doc.save();
     }
 

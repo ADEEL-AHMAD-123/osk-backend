@@ -149,6 +149,28 @@ export interface SiteSettingsAbout {
   };
 }
 
+/**
+ * Home-page "Trusted partners" strip.
+ *
+ *  - eyebrow / title / sub  the header copy above the partner tiles
+ *  - items                  array of (name, role) pairs — the tiles
+ *                           render an initials avatar + name + role
+ *
+ * Edited from /admin/settings → Home tab. Renders default content
+ * when not yet configured, mirroring the About-page pattern.
+ */
+export interface SiteSettingsPartnerItem {
+  name: string;
+  role: string;
+}
+
+export interface SiteSettingsPartners {
+  eyebrow: string;
+  title: string;
+  sub: string;
+  items: SiteSettingsPartnerItem[];
+}
+
 export interface SiteSettingsDoc extends Document {
   _id: Types.ObjectId;
   /** Marker so we can singleton-enforce via a unique index. */
@@ -165,6 +187,7 @@ export interface SiteSettingsDoc extends Document {
   legal: SiteSettingsLegal;
   cors: SiteSettingsCors;
   about: SiteSettingsAbout;
+  partners: SiteSettingsPartners;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -293,6 +316,28 @@ const aboutSchema = new Schema<SiteSettingsAbout>(
   { _id: false },
 );
 
+/* `partnerItemSchema` is a sub-schema because items are reordered /
+ * added / removed and need per-element identity. Top-level partner
+ * fields stay as plain nested paths for the same reason `about.header`
+ * does — see the comment above the about schema. */
+const partnerItemSchema = new Schema<SiteSettingsPartnerItem>(
+  {
+    name: { type: String, default: '', trim: true, maxlength: 120 },
+    role: { type: String, default: '', trim: true, maxlength: 160 },
+  },
+  { _id: false },
+);
+
+const partnersSchema = new Schema<SiteSettingsPartners>(
+  {
+    eyebrow: { type: String, default: '', trim: true, maxlength: 80 },
+    title: { type: String, default: '', trim: true, maxlength: 160 },
+    sub: { type: String, default: '', trim: true, maxlength: 1000 },
+    items: { type: [partnerItemSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const settingsSchema = new Schema<SiteSettingsDoc>(
   {
     singletonKey: {
@@ -348,6 +393,10 @@ const settingsSchema = new Schema<SiteSettingsDoc>(
     about: {
       type: aboutSchema,
       default: () => DEFAULT_ABOUT,
+    },
+    partners: {
+      type: partnersSchema,
+      default: () => DEFAULT_PARTNERS,
     },
   },
   { timestamps: true },
@@ -478,6 +527,25 @@ export const DEFAULT_ABOUT: SiteSettingsAbout = {
     title: 'List a property',
     body: 'Reach serious buyers — and stay in control of how people contact you.',
   },
+};
+
+/**
+ * Default "Trusted partners" strip — generic placeholder roles so
+ * we never claim a real partnership we don't have. Admin can rewrite
+ * via /admin/settings → Home tab.
+ */
+export const DEFAULT_PARTNERS: SiteSettingsPartners = {
+  eyebrow: 'Trusted partners',
+  title: 'A network you can close with.',
+  sub: 'From financing to the final inspection, OSK works with vetted local pros so every step of the move stays under one roof.',
+  items: [
+    { name: 'Atlas Mortgage', role: 'Mortgage broker' },
+    { name: 'Liberty Title', role: 'Title insurance' },
+    { name: 'Apex Inspections', role: 'Home inspection' },
+    { name: 'First Federal Bank', role: 'Lender' },
+    { name: 'Sterling Insure', role: 'Home insurance' },
+    { name: 'Cornerstone Movers', role: 'Relocation' },
+  ],
 };
 
 /* Empty defaults: a fresh install starts with no contact details,

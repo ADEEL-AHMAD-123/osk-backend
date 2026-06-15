@@ -86,6 +86,25 @@ const aboutItemSchema = z.object({
   body: z.string().max(2000),
 });
 
+/**
+ * Home-page "Trusted partners" patch. Optional fields so an admin
+ * can change one without re-sending all four. Items array cap at 24
+ * keeps the strip readable and bounds the DB doc.
+ */
+const partnerItemSchema = z.object({
+  name: z.string().max(120),
+  role: z.string().max(160),
+});
+
+const partnersPatchSchema = z
+  .object({
+    eyebrow: z.string().max(80),
+    title: z.string().max(160),
+    sub: z.string().max(1000),
+    items: z.array(partnerItemSchema).max(24),
+  })
+  .partial();
+
 const aboutPatchSchema = z
   .object({
     header: z
@@ -131,6 +150,7 @@ export const settingsPatchSchema = z
     homeStats: homeStatsPatchSchema,
     legal: legalPatchSchema,
     about: aboutPatchSchema,
+    partners: partnersPatchSchema,
   })
   .partial();
 

@@ -8,7 +8,10 @@ import { userRoutes } from './users/user.routes';
 import { agentRoutes } from './agents/agent.routes';
 import { reviewRoutes } from './reviews/review.routes';
 import { notificationRoutes } from './notifications/notification.routes';
-import { marketingRoutes } from './marketing/marketing.routes';
+import {
+  marketingAdminRoutes,
+  marketingRoutes,
+} from './marketing/marketing.routes';
 import { threadRoutes } from './threads/thread.routes';
 import { mediaRoutes } from './media/media.routes';
 import { adminRoutes } from './admin/admin.routes';
@@ -47,6 +50,7 @@ export function registerModules(): Router {
   router.use('/reviews', reviewRoutes);
   router.use('/notifications', notificationRoutes);
   router.use('/marketing', marketingRoutes);
+  router.use('/admin/subscribers', marketingAdminRoutes);
   router.use('/threads', threadRoutes);
   router.use('/media', mediaRoutes);
   router.use('/admin', adminRoutes);
