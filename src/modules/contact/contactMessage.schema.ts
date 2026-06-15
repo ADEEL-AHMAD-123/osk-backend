@@ -28,3 +28,9 @@ export const contactMessagePatchSchema = z.object({
 export type ContactMessagePatchInput = z.infer<
   typeof contactMessagePatchSchema
 >;
+
+/** Inline reply payload — admin types the reply body in the dashboard. */
+export const contactReplySchema = z.object({
+  body: z.string().min(2, 'Reply is empty').max(10_000),
+});
+export type ContactReplyInput = z.infer<typeof contactReplySchema>;

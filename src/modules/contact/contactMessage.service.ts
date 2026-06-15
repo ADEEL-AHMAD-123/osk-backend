@@ -10,11 +10,40 @@ import {
   ContactMessageModel,
   type ContactMessageDoc,
   type ContactMessageStatus,
+  type ContactTopic,
 } from './contactMessage.model';
 import type {
   ContactGeneralInput,
   ContactMessagePatchInput,
 } from './contactMessage.schema';
+
+/** Stable DTO returned to clients — uses `id` (not Mongo's `_id`) and
+ *  ISO timestamps so the React side doesn't have to convert. */
+export interface ContactMessageDTO {
+  id: string;
+  name: string;
+  email: string;
+  topic: ContactTopic;
+  message: string;
+  status: ContactMessageStatus;
+  adminNote: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function toContactMessageDTO(doc: ContactMessageDoc): ContactMessageDTO {
+  return {
+    id: doc._id.toString(),
+    name: doc.name,
+    email: doc.email,
+    topic: doc.topic,
+    message: doc.message,
+    status: doc.status,
+    adminNote: doc.adminNote ?? '',
+    createdAt: doc.createdAt.toISOString(),
+    updatedAt: doc.updatedAt.toISOString(),
+  };
+}
 
 /* ─────────────────────────────────────────────────────────────────
  * Contact-message application layer.
@@ -173,6 +202,97 @@ export const contactMessageService = {
     return ContactMessageModel.findByIdAndUpdate(id, update, {
       new: true,
     }).exec();
+  },
+
+  /**
+   * Send an email reply to the visitor through the configured email
+   * provider. On success, the message is marked `replied` and the
+   * reply text is appended to `adminNote` as an audit trail. The
+   * replying admin gets an in-app notification confirming the send.
+   *
+   * Throws if the message doesn't exist, the email provider isn't
+   * configured, or delivery fails — the controller maps these to
+   * proper HTTP errors so the admin sees a useful toast.
+   */
+  async sendReply(
+    id: string,
+    opts: {
+      body: string;
+      adminId: import('mongoose').Types.ObjectId;
+      adminName: string;
+      origin?: string | null;
+    },
+  ): Promise<ContactMessageDoc> {
+    const doc = await ContactMessageModel.findById(id).exec();
+    if (!doc) throw new Error('Contact message not found');
+
+    const trimmed = opts.body.trim();
+    if (trimmed.length < 2) {
+      throw new Error('Reply body is empty');
+    }
+
+    const [branding] = await Promise.all([getBrandingContext()]);
+    const emailSettings = await emailSettingsService.getProviderSecrets();
+    const provider = await getEmailProvider();
+
+    const html = `
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
+        trimmed,
+      )}</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;" />
+      <p style="margin:0 0 6px;font-size:12px;color:#888;">Your original message:</p>
+      <blockquote style="margin:0;padding-left:12px;border-left:3px solid #ddd;font-size:13px;color:#555;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
+        doc.message,
+      )}</blockquote>`;
+
+    const { html: rendered, text } = renderEmailTemplate(
+      emailSettings.activeTemplate,
+      {
+        title: `Re: ${doc.topic}`,
+        body: html,
+        buttonHref: resolveAppBaseUrl({ requestOrigin: opts.origin }),
+        buttonLabel: 'Visit site',
+      },
+      branding,
+    );
+
+    await provider.send({
+      to: doc.email,
+      subject: `Re: ${doc.topic}`,
+      html: rendered,
+      text,
+      /* `replyTo` set to the admin's address so the visitor's reply
+       * lands back in the admin inbox — keeps the thread coherent. */
+      replyTo: branding.supportEmail,
+    });
+
+    /* Persist after the send so a delivery failure doesn't mark a
+     * message as replied. Append (don't replace) the admin note so
+     * earlier notes survive the audit trail. */
+    const stamp = new Date().toISOString();
+    const previousNote = doc.adminNote?.trim() ?? '';
+    const replyEntry = `[${stamp}] ${opts.adminName} replied:\n${trimmed}`;
+    doc.adminNote = previousNote
+      ? `${previousNote}\n\n${replyEntry}`
+      : replyEntry;
+    doc.status = 'replied';
+    await doc.save();
+
+    /* Confirmation notification for the admin who hit Send. */
+    void notificationService
+      .notify({
+        userId: opts.adminId,
+        type: 'system',
+        title: `Reply sent to ${doc.name}`,
+        body: `Your reply about "${doc.topic}" was delivered to ${doc.email}.`,
+        href: '/admin/contact-messages',
+        meta: { contactMessageId: doc._id.toString() },
+      })
+      .catch((err) =>
+        logger.warn({ err }, 'reply confirmation notification skipped'),
+      );
+
+    return doc;
   },
 };
 

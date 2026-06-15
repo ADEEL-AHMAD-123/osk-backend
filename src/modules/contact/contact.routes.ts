@@ -6,6 +6,7 @@ import {
   getWhatsAppLink,
   listContactMessages,
   logCallIntent,
+  replyToContactMessage,
   requestCallback,
   submitContactGeneral,
   submitInquiry,
@@ -48,4 +49,10 @@ contactAdminRoutes.patch(
   authenticate,
   authorize('admin'),
   asyncHandler(updateContactMessage),
+);
+contactAdminRoutes.post(
+  '/:id/reply',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(replyToContactMessage),
 );

@@ -15,8 +15,14 @@ import {
 import {
   contactGeneralSchema,
   contactMessagePatchSchema,
+  contactReplySchema,
 } from './contactMessage.schema';
-import { contactMessageService } from './contactMessage.service';
+import { UnauthorizedError } from '../../shared/errors';
+import mongoose from 'mongoose';
+import {
+  contactMessageService,
+  toContactMessageDTO,
+} from './contactMessage.service';
 import { buildMeta } from '../../shared/response';
 import { NotFoundError } from '../../shared/errors';
 
@@ -135,9 +141,40 @@ const adminContactListSchema = z.object({
 export const listContactMessages: RequestHandler = async (req, res) => {
   const { page, limit, status } = adminContactListSchema.parse(req.query);
   const result = await contactMessageService.list({ page, limit, status });
-  sendSuccess(res, { items: result.items, unread: result.unread }, {
-    meta: buildMeta(page, limit, result.total),
-  });
+  /* Always run docs through the DTO mapper before send — the frontend
+   * expects `id` (string), not Mongo's `_id` (ObjectId). Without this
+   * the admin row's id is `undefined`, every action button breaks. */
+  sendSuccess(
+    res,
+    {
+      items: result.items.map(toContactMessageDTO),
+      unread: result.unread,
+    },
+    { meta: buildMeta(page, limit, result.total) },
+  );
+};
+
+/** POST /admin/contact-messages/:id/reply — send an email reply
+ *  inline from the dashboard. On success the message is marked
+ *  `replied` and the body is appended to the audit-trail adminNote. */
+export const replyToContactMessage: RequestHandler = async (req, res) => {
+  if (!req.user) throw new UnauthorizedError();
+  const parsed = contactReplySchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(parsed.error.issues);
+  try {
+    const updated = await contactMessageService.sendReply(req.params.id ?? '', {
+      body: parsed.data.body,
+      adminId: new mongoose.Types.ObjectId(req.user.id),
+      adminName: req.user.email,
+      origin: req.headers.origin ?? null,
+    });
+    sendSuccess(res, toContactMessageDTO(updated));
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Contact message not found') {
+      throw new NotFoundError(err.message);
+    }
+    throw err;
+  }
 };
 
 /** PATCH /admin/contact-messages/:id — mark status + save admin note. */
@@ -149,7 +186,7 @@ export const updateContactMessage: RequestHandler = async (req, res) => {
     parsed.data,
   );
   if (!updated) throw new NotFoundError('Contact message not found');
-  sendSuccess(res, updated);
+  sendSuccess(res, toContactMessageDTO(updated));
 };
 
 /** GET /contact/whatsapp-link/:propertyId — wa.me deep link with template. */
