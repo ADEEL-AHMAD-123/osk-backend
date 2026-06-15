@@ -277,10 +277,21 @@ export const settingsService = {
         },
       };
       doc.about = merged;
-      /* `markModified` is belt-and-suspenders for nested subdocs —
-       * Mongoose's change tracker doesn't always notice replacements
-       * of a whole subdoc when the path was undefined to begin with. */
+      /* Mongoose's change tracker is per-subschema. Marking just
+       *  `about` is NOT enough — when `about` is itself a nested
+       *  Schema with sub-Schemas (one per section), the change-tracker
+       *  cascades down to the leaf type. We have to mark each
+       *  sub-section explicitly so the save actually persists header
+       *  / values / process / cta. Without these, only fields whose
+       *  change is "obvious" to Mongoose (e.g. array reassignments
+       *  on items) end up in the write — that's why values + process
+       *  items were saving but the header strings and cta strings
+       *  were silently dropped. */
       doc.markModified('about');
+      doc.markModified('about.header');
+      doc.markModified('about.values');
+      doc.markModified('about.process');
+      doc.markModified('about.cta');
       await doc.save();
     }
 
