@@ -12,6 +12,13 @@ import {
   callbackSchema,
   inquirySchema,
 } from '../inquiries/inquiry.schema';
+import {
+  contactGeneralSchema,
+  contactMessagePatchSchema,
+} from './contactMessage.schema';
+import { contactMessageService } from './contactMessage.service';
+import { buildMeta } from '../../shared/response';
+import { NotFoundError } from '../../shared/errors';
 
 function clientIp(req: import('express').Request): string | null {
   const fwd = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim();
@@ -89,6 +96,60 @@ export const requestCallback: RequestHandler = async (req, res) => {
     userAgent: req.headers['user-agent'],
   });
   sendSuccess(res, toInquiryDTO(inquiry), { status: 201 });
+};
+
+/* ─────────────────────────────────────────────────────────────────
+ * General contact form — public submit + admin moderation.
+ * ──────────────────────────────────────────────────────────────── */
+
+/** POST /contact/general — public contact form. Validates, runs the
+ *  captcha gate, persists, fans out to admins (in-app + email). */
+export const submitContactGeneral: RequestHandler = async (req, res) => {
+  const parsed = contactGeneralSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(parsed.error.issues);
+  await assertCaptcha(parsed.data.captchaToken, req);
+
+  const msg = await contactMessageService.create(
+    {
+      name: parsed.data.name,
+      email: parsed.data.email,
+      topic: parsed.data.topic,
+      message: parsed.data.message,
+    },
+    {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      origin: req.headers.origin ?? null,
+    },
+  );
+  sendSuccess(res, { id: msg._id.toString(), received: true }, { status: 201 });
+};
+
+const adminContactListSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(60).default(20),
+  status: z.enum(['new', 'replied', 'closed']).optional(),
+});
+
+/** GET /admin/contact-messages — paginated list with optional status. */
+export const listContactMessages: RequestHandler = async (req, res) => {
+  const { page, limit, status } = adminContactListSchema.parse(req.query);
+  const result = await contactMessageService.list({ page, limit, status });
+  sendSuccess(res, { items: result.items, unread: result.unread }, {
+    meta: buildMeta(page, limit, result.total),
+  });
+};
+
+/** PATCH /admin/contact-messages/:id — mark status + save admin note. */
+export const updateContactMessage: RequestHandler = async (req, res) => {
+  const parsed = contactMessagePatchSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(parsed.error.issues);
+  const updated = await contactMessageService.update(
+    req.params.id ?? '',
+    parsed.data,
+  );
+  if (!updated) throw new NotFoundError('Contact message not found');
+  sendSuccess(res, updated);
 };
 
 /** GET /contact/whatsapp-link/:propertyId — wa.me deep link with template. */

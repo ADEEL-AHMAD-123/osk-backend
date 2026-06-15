@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { healthRoutes } from './health/health.routes';
 import { authRoutes } from './auth/auth.routes';
 import { propertyRoutes } from './properties/property.routes';
-import { contactRoutes } from './contact/contact.routes';
+import { contactAdminRoutes, contactRoutes } from './contact/contact.routes';
 import { inquiryRoutes } from './inquiries/inquiry.routes';
 import { userRoutes } from './users/user.routes';
 import { agentRoutes } from './agents/agent.routes';
@@ -39,6 +39,7 @@ export function registerModules(): Router {
   router.use('/health', healthRoutes);
   router.use('/properties', propertyRoutes);
   router.use('/contact', contactRoutes);
+  router.use('/admin/contact-messages', contactAdminRoutes);
   router.use('/auth', authRoutes);
   router.use('/inquiries', inquiryRoutes);
   router.use('/users', userRoutes);

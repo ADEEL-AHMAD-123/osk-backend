@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../../shared/asyncHandler';
+import { authenticate, authorize } from '../../shared/middleware/auth';
 import {
   getWhatsAppLink,
+  listContactMessages,
   logCallIntent,
   requestCallback,
+  submitContactGeneral,
   submitInquiry,
+  updateContactMessage,
 } from './contact.controller';
 
 /**
@@ -26,4 +30,22 @@ const contactLimiter = rateLimit({
 contactRoutes.post('/inquiry', contactLimiter, asyncHandler(submitInquiry));
 contactRoutes.post('/callback-request', contactLimiter, asyncHandler(requestCallback));
 contactRoutes.post('/call-intent', asyncHandler(logCallIntent));
+contactRoutes.post('/general', contactLimiter, asyncHandler(submitContactGeneral));
 contactRoutes.get('/whatsapp-link/:propertyId', asyncHandler(getWhatsAppLink));
+
+/* Admin-only — list + mark replied/closed. Mounted under /contact so
+ * the contact module owns its own admin routes; auth + role gate
+ * apply per-route. */
+export const contactAdminRoutes = Router();
+contactAdminRoutes.get(
+  '/',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(listContactMessages),
+);
+contactAdminRoutes.patch(
+  '/:id',
+  authenticate,
+  authorize('admin'),
+  asyncHandler(updateContactMessage),
+);
