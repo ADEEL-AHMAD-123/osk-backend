@@ -98,18 +98,35 @@ export const startGoogle: RequestHandler = async (req, res, next) => {
 
     const { randomBytes } = await import('node:crypto');
     const state = randomBytes(24).toString('base64url');
-    const redirectTo =
-      sanitize(typeof req.query.redirectTo === 'string' ? req.query.redirectTo : null) ??
-      sanitize(req.headers.origin ?? null) ??
-      '';
+    const rawRedirectTo = sanitize(
+      typeof req.query.redirectTo === 'string' ? req.query.redirectTo : null,
+    );
+    /* Capture the frontend origin separately. We use it later in the
+     * callback to (a) resolve a relative `redirectTo` against the
+     * right host and (b) construct the failure-redirect URL even when
+     * the user came in without an explicit redirectTo. */
+    const frontendOrigin = sanitize(req.headers.origin ?? null) ?? '';
+    /* If `redirectTo` is a same-origin path (starts with "/"), resolve
+     * it against the frontend origin here so the cookie always stores
+     * an absolute URL. Without this the callback could end up doing a
+     * relative redirect from the BACKEND domain — that resolves to the
+     * backend host and 404s. */
+    let redirectTo = rawRedirectTo ?? frontendOrigin;
+    if (rawRedirectTo && rawRedirectTo.startsWith('/') && frontendOrigin) {
+      redirectTo = `${frontendOrigin.replace(/\/+$/, '')}${rawRedirectTo}`;
+    }
 
-    res.cookie(STATE_COOKIE, JSON.stringify({ s: state, r: redirectTo }), {
-      httpOnly: true,
-      secure: req.secure || (req.headers['x-forwarded-proto'] === 'https'),
-      sameSite: 'lax', // must be lax — Google's redirect is a top-level nav
-      maxAge: STATE_TTL_MS,
-      path: '/',
-    });
+    res.cookie(
+      STATE_COOKIE,
+      JSON.stringify({ s: state, r: redirectTo, o: frontendOrigin }),
+      {
+        httpOnly: true,
+        secure: req.secure || (req.headers['x-forwarded-proto'] === 'https'),
+        sameSite: 'lax', // must be lax — Google's redirect is a top-level nav
+        maxAge: STATE_TTL_MS,
+        path: '/',
+      },
+    );
 
     const params = new URLSearchParams({
       client_id: keys.clientId,
@@ -157,7 +174,7 @@ export const googleCallback: RequestHandler = async (req, res, next) => {
     };
 
     if (!stateCookieRaw) return fail('state_missing');
-    let stateCookie: { s?: string; r?: string };
+    let stateCookie: { s?: string; r?: string; o?: string };
     try {
       stateCookie = JSON.parse(stateCookieRaw);
     } catch {
@@ -202,13 +219,25 @@ export const googleCallback: RequestHandler = async (req, res, next) => {
 
     setRefreshCookie(res, refreshToken);
 
-    /* If the form passed a path like "/dashboard" round-trip it
-     * literally; if it passed an origin like "https://app.com" land
-     * on /dashboard there. */
-    const final = resolveFinalRedirect({
+    /* Resolve the final landing URL.
+     *
+     *  - `stateCookie.r` is whatever the start handler stored — ideally
+     *    already an absolute URL after the start-time normalisation.
+     *  - `stateCookie.o` is the frontend origin captured at /start time,
+     *    used to absolutise any same-origin path that slipped through.
+     *  - `req.headers.origin` on a Google 302 is usually empty, so we
+     *    rely on the cookie for the frontend host.
+     *
+     * If we still end up with a same-origin path after all that, we
+     * MUST prepend the frontend origin — otherwise express's
+     * res.redirect treats it as relative to the backend host and 404s. */
+    let final = resolveFinalRedirect({
       redirectTo: stateCookie.r ?? null,
-      origin: req.headers.origin ?? null,
+      origin: stateCookie.o ?? req.headers.origin ?? null,
     });
+    if (final.startsWith('/') && stateCookie.o) {
+      final = `${stateCookie.o.replace(/\/+$/, '')}${final}`;
+    }
     /* Encode the freshly-minted access token in the redirect URL hash
      * so the frontend can hydrate the in-memory access token without a
      * second round-trip. Hash fragments aren't sent to the server, so
