@@ -7,6 +7,21 @@ import type {
 } from '../payment.types';
 import type { PaymentProvider } from './provider.interface';
 
+/** Pull the origin off whichever URL the caller already resolved
+ *  (params.successUrl is the live-request-aware base coming from
+ *  `resolveCheckoutBaseUrl(requestOrigin)`), so the bank-transfer
+ *  redirect lands on the same frontend the seller started on — even
+ *  when there are multiple frontend domains. Falls back to
+ *  PUBLIC_APP_URL only if the URL is unparseable, which it shouldn't
+ *  be in practice. */
+function baseFromSuccessUrl(successUrl: string): string {
+  try {
+    return new URL(successUrl).origin;
+  } catch {
+    return env.PUBLIC_APP_URL.replace(/\/$/, '');
+  }
+}
+
 /**
  * Bank-transfer adapter.
  *
@@ -31,7 +46,10 @@ class BankTransferProvider implements PaymentProvider {
 
   async createIntent(params: CreateIntentParams): Promise<ProviderIntent> {
     const ref = `bank_${crypto.randomBytes(8).toString('hex')}`;
-    const baseUrl = env.PUBLIC_APP_URL.replace(/\/$/, '');
+    /* Re-use the live-request-aware base the payment service already
+     * resolved for `successUrl` so multi-domain deploys redirect back
+     * to whichever frontend the seller initiated checkout from. */
+    const baseUrl = baseFromSuccessUrl(params.successUrl);
     return {
       providerRef: ref,
       redirectUrl: `${baseUrl}/dashboard/subscription/bank-transfer/${params.paymentId}`,

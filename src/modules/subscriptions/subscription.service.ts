@@ -7,6 +7,7 @@ import {
   PROVIDER_BILLING_CURRENCIES,
   providerSupportsCurrency,
 } from '../payments/billing-currencies';
+import { USD_FX_RATES, convertAmount, roundForBilling } from '../payments/fx';
 import type { ProviderKey } from '../payments/payment.types';
 import { UserModel } from '../auth/user.model';
 import {
@@ -64,11 +65,21 @@ export interface CheckoutPair {
 
 /**
  * Find a billing currency in `plan.prices` that the chosen provider
- * can charge in. Prefers `preferredCurrency` (typically the user's
- * locale currency); falls back to the first compatible price. Throws
- * a ConflictError with an explanation when no pair is possible — that
- * way the seller gets "Paystack can't charge plan Gold in any
- * supported currency" instead of a generic provider error.
+ * can charge in.
+ *
+ *  1. Exact match against `preferredCurrency` (typically the user's
+ *     locale currency) — strict equality on the plan's authored prices.
+ *  2. First plan price whose currency the provider supports natively
+ *     — admins are expected to keep USD as a fallback so this matches
+ *     most of the time.
+ *  3. FX fallback: pick a sensible provider-supported currency and
+ *     convert the plan's primary price into it via the static FX
+ *     table. Used when (a) the plan is priced in a currency the
+ *     provider can't charge (e.g. USD plan with Paystack) and the
+ *     admin hasn't added a compatible secondary price. The Payment
+ *     row still records the original plan currency in `displayCurrency`
+ *     for the receipt/audit, while `currency` / `amount` are the
+ *     actual charged values.
  */
 export function resolveCheckoutPair(
   plan: SubscriptionPlanDoc,
@@ -78,8 +89,7 @@ export function resolveCheckoutPair(
   const providerCurrencies = PROVIDER_BILLING_CURRENCIES[provider] as readonly string[];
   const pref = preferredCurrency?.toUpperCase();
 
-  /* Prefer exact match between the user's hinted currency and what
-   * the provider can charge. */
+  /* 1. Exact match preferred currency. */
   if (pref) {
     const exact = plan.prices.find(
       (p) => p.currency === pref && providerCurrencies.includes(p.currency),
@@ -87,13 +97,32 @@ export function resolveCheckoutPair(
     if (exact) return { provider, currency: exact.currency, amount: exact.amount };
   }
 
-  /* Otherwise pick the first plan price whose currency the provider
-   * supports. Admins are expected to keep USD as a fallback in every
-   * paid plan so this almost always matches. */
+  /* 2. Any plan price whose currency the provider supports natively. */
   const match = plan.prices.find((p) => providerCurrencies.includes(p.currency));
   if (match) return { provider, currency: match.currency, amount: match.amount };
 
-  /* No compatible currency. */
+  /* 3. FX fallback. Convert the plan's primary price to a provider-
+   *    supported currency. Choose target as:
+   *      - preferredCurrency, if the provider can charge in it AND
+   *        the FX table knows it (so we can convert into it);
+   *      - else the first provider-supported currency in the table. */
+  const primary = plan.prices[0];
+  if (primary && providerCurrencies.length > 0) {
+    const fxTarget =
+      (pref &&
+        providerCurrencies.includes(pref) &&
+        USD_FX_RATES[pref] !== undefined &&
+        pref) ||
+      providerCurrencies.find((c) => USD_FX_RATES[c] !== undefined);
+    if (fxTarget && USD_FX_RATES[primary.currency] !== undefined) {
+      const converted = convertAmount(primary.amount, primary.currency, fxTarget);
+      const charged = roundForBilling(converted, fxTarget);
+      return { provider, currency: fxTarget, amount: charged };
+    }
+  }
+
+  /* Truly no path forward (e.g. plan priced in an exotic currency the
+   * FX table doesn't know about). */
   const planCurrencies = plan.prices.map((p) => p.currency).join(', ') || '—';
   throw new ConflictError(
     `${provider} cannot charge plan "${plan.name}" — provider supports ${providerCurrencies.join(

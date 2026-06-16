@@ -23,22 +23,18 @@ export const BILLING_CURRENCIES = [
 export type BillingCurrency = (typeof BILLING_CURRENCIES)[number];
 
 /**
- * Which billing currencies each provider can accept at checkout.
+ * Which billing currencies each provider can actually charge.
  *
- *  - Stripe / PayPal: stick to the major cards-supported set. Both
- *    accept many more currencies in practice; the list here is the
- *    safe subset we're willing to expose without per-region testing.
- *  - Paystack: NGN, GHS, ZAR, KES. The operator confirmed NGN and GHS
- *    work and that USD is rejected by their Paystack account, so we
- *    leave USD out — sellers paying in USD use Stripe / PayPal /
- *    bank-transfer instead. Add it back here per-deployment if a
- *    customer's Paystack account supports USD.
- *  - Bank transfer: a manual flow, so we trust the admin to actually
- *    accept whatever currency the wire arrives in. All of them.
+ *  - Stripe / PayPal: the major cards-supported set.
+ *  - Paystack: NGN, GHS, ZAR, KES. The operator's Paystack account
+ *    rejects USD, so we DON'T expose USD here. Plans priced in USD
+ *    are handled by the FX-fallback path in resolveCheckoutPair —
+ *    the seller's display stays USD, the checkout converts to the
+ *    provider's first supported currency.
+ *  - Bank transfer: a manual flow — trust the admin to accept
+ *    whatever currency the wire arrives in.
  *
- * The frontend reads this map (re-exported via PaymentSettingsDTO) so
- * the provider picker can be driven purely from the API and we never
- * surface an impossible provider/currency pair to the seller.
+ * The frontend reads this map (re-exported via PaymentSettingsDTO).
  */
 export const PROVIDER_BILLING_CURRENCIES: Record<
   ProviderKey,
