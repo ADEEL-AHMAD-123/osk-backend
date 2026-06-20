@@ -56,26 +56,38 @@ export function createApp(): Express {
        * 4xx so client errors are visible without drowning the log.
        * Error on 5xx so server faults stand out at a glance. */
       customLogLevel: (req, res, err) => {
+        /* Use originalUrl everywhere — req.url gets stripped by
+         * Express's sub-routers as the request descends through
+         * `app.use('/api/v1', ...)` → `router.use('/properties', ...)`,
+         * so by the time pino-http reads it the prefix is gone. The
+         * originalUrl is the verbatim path the client requested. */
+        const url = (req as { originalUrl?: string }).originalUrl ?? req.url ?? '';
         if (err || res.statusCode >= 500) return 'error';
         if (res.statusCode >= 400) return 'warn';
         if (req.method === 'OPTIONS') return 'silent';
-        if (req.url?.startsWith(`${env.API_PREFIX}/health`)) return 'silent';
-        if (req.url?.startsWith('/uploads/')) return 'silent';
+        if (url.startsWith(`${env.API_PREFIX}/health`)) return 'silent';
+        if (url.startsWith('/uploads/')) return 'silent';
         return 'info';
       },
       /* Plain English one-liners. The pretty-printer's messageFormat
        * (see config/logger.ts) appends the origin domain + requestId,
        * so this just carries the HTTP-verb / URL / status. */
-      customSuccessMessage: (req, res) =>
-        `${req.method} ${req.url} → ${res.statusCode}`,
-      customErrorMessage: (req, res) =>
-        `${req.method} ${req.url} → ${res.statusCode}`,
+      customSuccessMessage: (req, res) => {
+        const url = (req as { originalUrl?: string }).originalUrl ?? req.url ?? '';
+        return `${req.method} ${url} → ${res.statusCode}`;
+      },
+      customErrorMessage: (req, res) => {
+        const url = (req as { originalUrl?: string }).originalUrl ?? req.url ?? '';
+        return `${req.method} ${url} → ${res.statusCode}`;
+      },
       /* Drop headers / cookies / remote address from the logged
        * record — the serializer only keeps what we display. */
       serializers: {
         req: (req) => ({
           method: req.method,
-          url: req.url,
+          url:
+            (req as unknown as { originalUrl?: string }).originalUrl ??
+            req.url,
         }),
         res: (res) => ({
           statusCode: res.statusCode,
