@@ -17,6 +17,24 @@ import swaggerUi from 'swagger-ui-express';
 import { registerModules } from './modules';
 import { openApiSpec } from './openapi/spec';
 
+/** Pull the calling origin off either the `Origin` header (XHR /
+ *  fetch) or the `Referer` host (top-level navigations). Returns just
+ *  the hostname (e.g. `oskbooking.com`) so log lines stay short. */
+function extractOrigin(
+  headers: Record<string, string | string[] | undefined>,
+): string {
+  const raw =
+    (typeof headers.origin === 'string' && headers.origin) ||
+    (typeof headers.referer === 'string' && headers.referer) ||
+    '';
+  if (!raw) return '';
+  try {
+    return new URL(raw).host;
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Builds the Express application: edge security/observability middleware,
  * the versioned module router, and the central error handler last.
@@ -34,20 +52,26 @@ export function createApp(): Express {
   app.use(
     pinoHttp({
       logger,
-      /** Quiet successful preflight + health checks; warn on 4xx; error on 5xx. */
+      /* Quiet successful preflight + health/static checks. Warn on
+       * 4xx so client errors are visible without drowning the log.
+       * Error on 5xx so server faults stand out at a glance. */
       customLogLevel: (req, res, err) => {
         if (err || res.statusCode >= 500) return 'error';
         if (res.statusCode >= 400) return 'warn';
         if (req.method === 'OPTIONS') return 'silent';
         if (req.url?.startsWith(`${env.API_PREFIX}/health`)) return 'silent';
+        if (req.url?.startsWith('/uploads/')) return 'silent';
         return 'info';
       },
-      /** Plain English one-liners — the verbose envelope is a debug detail. */
+      /* Plain English one-liners. The pretty-printer's messageFormat
+       * (see config/logger.ts) appends the origin domain + requestId,
+       * so this just carries the HTTP-verb / URL / status. */
       customSuccessMessage: (req, res) =>
         `${req.method} ${req.url} → ${res.statusCode}`,
       customErrorMessage: (req, res) =>
         `${req.method} ${req.url} → ${res.statusCode}`,
-      /** Drop headers / cookies / remote address from the logged record. */
+      /* Drop headers / cookies / remote address from the logged
+       * record — the serializer only keeps what we display. */
       serializers: {
         req: (req) => ({
           method: req.method,
@@ -57,7 +81,13 @@ export function createApp(): Express {
           statusCode: res.statusCode,
         }),
       },
-      customProps: (_req, res) => ({ requestId: res.locals.requestId }),
+      /* Surface the Origin (or Referer host) so every line in the log
+       * tells us "which frontend domain made this call". Multi-domain
+       * deploys benefit a lot — you can grep by domain. */
+      customProps: (req, res) => ({
+        requestId: res.locals.requestId,
+        origin: extractOrigin(req.headers as Record<string, string | string[] | undefined>),
+      }),
     }),
   );
 
